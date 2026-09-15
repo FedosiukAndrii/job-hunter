@@ -176,4 +176,3 @@ not a mechanism for multi-host or multi-writer SQLite.
 | JobSpy unavailable isolation | Required if configured | Required if configured | Required if configured |
 | Local secret read without printing value | Required | Required | Required |
 | Docker volume restart | N/A | N/A | Required |
-
