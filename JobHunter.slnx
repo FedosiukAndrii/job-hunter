@@ -1,0 +1,25 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/JobHunter.AI.Abstractions/JobHunter.AI.Abstractions.csproj" />
+    <Project Path="src/JobHunter.AI.Copilot/JobHunter.AI.Copilot.csproj" />
+    <Project Path="src/JobHunter.Application/JobHunter.Application.csproj" />
+    <Project Path="src/JobHunter.Domain/JobHunter.Domain.csproj" />
+    <Project Path="src/JobHunter.Infrastructure/JobHunter.Infrastructure.csproj" />
+    <Project Path="src/JobHunter.JobSources.Dou/JobHunter.JobSources.Dou.csproj" />
+    <Project Path="src/JobHunter.JobSources.JobSpy/JobHunter.JobSources.JobSpy.csproj" />
+    <Project Path="src/JobHunter.Notifications.Telegram/JobHunter.Notifications.Telegram.csproj" />
+    <Project Path="src/JobHunter.Worker/JobHunter.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/JobHunter.Application.Tests/JobHunter.Application.Tests.csproj" />
+    <Project Path="tests/JobHunter.ContractTests/JobHunter.ContractTests.csproj" />
+    <Project Path="tests/JobHunter.Domain.Tests/JobHunter.Domain.Tests.csproj" />
+    <Project Path="tests/JobHunter.Infrastructure.Tests/JobHunter.Infrastructure.Tests.csproj" />
+    <Project Path="tests/JobHunter.IntegrationTests/JobHunter.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

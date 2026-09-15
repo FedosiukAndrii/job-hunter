@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <UserSecretsId>dotnet-JobHunter.Worker-7a5c4a9d-6caa-4d13-923e-09be142cf7d5</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JobHunter.AI.Abstractions\JobHunter.AI.Abstractions.csproj" />
+    <ProjectReference Include="..\JobHunter.AI.Copilot\JobHunter.AI.Copilot.csproj" />
+    <ProjectReference Include="..\JobHunter.Application\JobHunter.Application.csproj" />
+    <ProjectReference Include="..\JobHunter.Infrastructure\JobHunter.Infrastructure.csproj" />
+    <ProjectReference Include="..\JobHunter.JobSources.Dou\JobHunter.JobSources.Dou.csproj" />
+    <ProjectReference Include="..\JobHunter.JobSources.JobSpy\JobHunter.JobSources.JobSpy.csproj" />
+    <ProjectReference Include="..\JobHunter.Notifications.Telegram\JobHunter.Notifications.Telegram.csproj" />
+  </ItemGroup>
+</Project>

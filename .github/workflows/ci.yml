@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore JobHunter.slnx
+
+      - name: Verify formatting
+        run: dotnet format JobHunter.slnx --no-restore --verify-no-changes
+
+      - name: Build
+        run: dotnet build JobHunter.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: >-
+          dotnet test JobHunter.slnx
+          --configuration Release
+          --no-build
+          --logger "trx"
+          --results-directory TestResults
