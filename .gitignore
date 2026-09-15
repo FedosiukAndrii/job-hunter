@@ -26,6 +26,9 @@ data/
 appsettings.Development.json
 secrets/
 
+# Local project-status notes
+temp/
+
 # Python
 __pycache__/
 *.py[cod]

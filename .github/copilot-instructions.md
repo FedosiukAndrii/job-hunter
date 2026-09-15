@@ -40,6 +40,13 @@ architecture, behavior, data models, integrations, or deployment.
 - Use explicit source-run and outbox states, durable unique keys, short SQLite
   transactions, and idempotent writes. Do not claim exactly-once Telegram
   delivery.
+- If a required development tool is unavailable, ask the user for permission to
+  install it. After approval, install it from the official or otherwise trusted
+  source and verify the installation before continuing.
+- Maintain the current local project state in Markdown files under `temp/`,
+  including completed work, current focus, blockers, and next steps. Update the
+  relevant state file after a material project change. This directory is
+  gitignored; never put secrets or sensitive personal/source data in it.
 - Add fixture-based parser tests and deterministic unit/integration tests for
   every behavior change. Do not make ordinary tests depend on live job boards.
 - Prefer precise errors and observable degraded states over silent fallback or
