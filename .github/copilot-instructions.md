@@ -1,8 +1,8 @@
 # Job Hunter instructions
 
-Read [the PRD](../docs/PRD.md) and [the implementation plan](../docs/IMPLEMENTATION_PLAN.md)
-before proposing or changing architecture, behavior, data models, integrations,
-or deployment.
+Read [the PRD](../docs/PRD.md), [the implementation plan](../docs/IMPLEMENTATION_PLAN.md),
+and [the deployment guide](../docs/DEPLOYMENT.md) before proposing or changing
+architecture, behavior, data models, integrations, or deployment.
 
 ## Non-negotiable architecture
 
@@ -10,6 +10,11 @@ or deployment.
   of EF Core, HTTP clients, Telegram, and AI SDKs.
 - .NET is the sole writer to the local SQLite database. JobSpy must never access
   the database or Telegram credentials.
+- Native .NET execution is the primary deployment path. Do not make Docker,
+  Docker Desktop, Compose, or a running Python sidecar a prerequisite for DOU,
+  rules-only scoring, optional Copilot analysis, SQLite, or Telegram.
+- JobSpy remains an explicitly configured optional sidecar. It may run in Docker
+  or from a separately managed local Python environment over loopback HTTP.
 - AI is optional. The source, normalization, persistence, deterministic rules,
   and notification pipeline must continue to work if every AI provider is
   disabled, unavailable, invalid, or over quota.

@@ -4,10 +4,10 @@
 |---|---|
 | Product | .NET Job Hunter |
 | Status | Approved for implementation |
-| Version | 1.0 |
+| Version | 1.1 |
 | Last updated | 2026-09-15 |
 | Target user | One job seeker operating a local installation |
-| Primary runtime | Docker Compose on one local machine |
+| Primary runtime | Native .NET Worker on one local machine |
 
 ## 1. Product vision
 
@@ -50,7 +50,9 @@ AI analysis, and notifying the user only once per qualifying vacancy.
   local Ollama and an OpenAI API adapter.
 - Send one immediate Telegram message for each job above its applicable
   notification threshold.
-- Run on Windows, macOS, and Linux through Docker Compose.
+- Run directly on Windows, macOS, and Linux without Docker.
+- Offer Docker Compose as an optional, reproducible deployment profile, not as a
+  prerequisite for the primary job-search flow.
 
 ### 3.2 Success criteria
 
@@ -91,7 +93,7 @@ must be able to audit why a job was selected.
 ### Primary journey
 
 1. The user creates a Telegram bot, initiates its private chat, and provides the
-   token through a Docker secret.
+   token through the selected platform's protected secret mechanism.
 2. The user creates `profile.yaml` with explicit preferences and skill evidence.
 3. The user enables DOU subscriptions and, only after accepting its risk, may
    enable the experimental JobSpy/LinkedIn subscription.
@@ -109,6 +111,9 @@ must be able to audit why a job was selected.
 ### FR-01: Application lifecycle and scheduling
 
 - The primary application is a .NET 10 Generic Host/Worker Service.
+- The supported primary startup paths are `dotnet run` for development and a
+  published native executable for ordinary Windows/macOS/Linux use. Neither path
+  requires Docker.
 - It exposes `run`, `run-once`, `doctor`, and `setup-telegram` operational
   commands, or equivalent safe documented entry points.
 - A single orchestrator evaluates persisted source due times at least once a
@@ -135,8 +140,11 @@ must be able to audit why a job was selected.
 
 ### FR-03: Experimental JobSpy / LinkedIn source
 
-- JobSpy runs in an isolated Python/FastAPI container and exposes only a
-  versioned internal API to the .NET worker.
+- JobSpy runs as an isolated Python/FastAPI sidecar and exposes only a versioned
+  loopback/internal API to the .NET worker. The sidecar may run in an optional
+  Docker container or in a separately managed local Python environment.
+- DOU, SQLite, rules, Telegram, and optional Copilot analysis must start and
+  work when JobSpy and Docker are absent.
 - It is disabled by default and requires an explicit configuration opt-in.
 - It does not receive the SQLite path, Telegram credentials, full profile/CV, or
   AI credentials.
@@ -243,8 +251,9 @@ must be able to audit why a job was selected.
 - Provide liveness, readiness, and source/delivery freshness indicators.
 - Back up SQLite consistently to an encrypted/access-controlled location, retain
   rotating copies, and test restore regularly.
-- A `doctor` command validates Docker dependencies, mounted secrets, database
-  writability, configured sources, Telegram connectivity, and optional AI health.
+- A `doctor` command validates the selected deployment profile, application-data
+  directory, secret provider, database writability, configured sources, Telegram
+  connectivity, and optional AI/JobSpy health.
 
 ## 7. Data model
 
@@ -296,12 +305,15 @@ Pending -> Leased -> Sent
 
 ## 9. Security, privacy, and safety requirements
 
-- Secrets are delivered as Docker secrets or protected mounted files; no secret
-  is committed, baked into an image, written to SQLite, or logged.
+- Secrets are delivered through a platform-protected provider or a
+  access-controlled secret file. Docker secrets are an optional Compose-mode
+  mechanism; no secret is committed, baked into an image, written to SQLite, or
+  logged.
 - Python has least privilege and no access to .NET data/secrets except its narrow
   internal request contract.
-- SQLite is stored in one local Docker named volume, never a network share. The
-  .NET worker is its only writer.
+- SQLite is stored in an OS-appropriate local application-data directory in
+  native mode or one local Docker named volume in Compose mode; it is never on a
+  network share. The .NET worker is its only writer.
 - AI cloud use is opt-in and must declare data handling. Redact contact and
   unrelated sensitive information before cloud transmission.
 - Local Ollama binds to loopback only unless separately secured.
@@ -318,7 +330,7 @@ Pending -> Leased -> Sent
 
 | Area | Requirement |
 |---|---|
-| Runtime | Windows, macOS, Linux via Docker Compose |
+| Runtime | Native Windows, macOS, Linux; optional Docker Compose profile |
 | Framework | .NET 10 LTS |
 | Database | EF Core SQLite with WAL, short transactions, bounded busy timeout |
 | Availability | One local instance; source failure degrades but does not crash worker |
@@ -377,7 +389,8 @@ telegram:
 8. Worker crashes after Telegram might accept a request; outbox becomes `Unknown`
    and does not silently resend a duplicate.
 9. Worker restart preserves existing jobs, source schedules, and pending outbox
-   rows from the mounted SQLite volume.
+   rows from the native application-data directory or optional mounted SQLite
+   volume.
 10. A parser fixture changes markup; the test fails with a useful diagnostic
     rather than silently generating malformed jobs.
 
@@ -400,7 +413,10 @@ The product cannot be called MVP-ready until every scenario in section 12 passes
 the checklist in [the implementation plan](IMPLEMENTATION_PLAN.md) is complete,
 and the following manual checks pass:
 
-- Docker Compose restart preserves the named SQLite volume and no duplicate alert.
+- A clean Windows and macOS machine can run the DOU + rules + Telegram path from
+  `dotnet run` or the published executable without Docker.
+- Docker Compose restart, when that optional profile is used, preserves the named
+  SQLite volume and does not create a duplicate alert.
 - `doctor` identifies a missing secret, inaccessible database, unavailable
   JobSpy, invalid Telegram destination, and unavailable optional Copilot adapter.
 - A backup restores into an isolated volume and passes integrity checks.

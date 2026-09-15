@@ -14,6 +14,8 @@
 5. Treat source data and AI input as untrusted; no agent tools for AI scoring.
 6. Use fixtures and mocked transports, not job boards or Telegram, in normal CI.
 7. Prefer explicit degraded state and diagnostics over hidden retry/fallback.
+8. Make native .NET execution on Windows/macOS/Linux work first. Docker Compose
+   is optional and must not be a runtime prerequisite for the DOU pipeline.
 
 ## 2. Repository layout
 
@@ -38,6 +40,7 @@ tests/
   JobHunter.IntegrationTests/
   Fixtures/
 deploy/
+  native/
   compose/
   secrets/
   examples/
@@ -51,11 +54,12 @@ deploy/
 
 | Spike | Work | Exit criterion |
 |---|---|---|
-| Copilot in container | Create disposable .NET 10 Linux container using `GitHub.Copilot.SDK`; authenticate using a supported noninteractive/deployable method; start a constrained session and validate structured tool output | Works after container restart without an OpenAI API key, or a documented blocker produces a rules-only MVP decision |
+| Copilot native host | Create a disposable .NET 10 native-host test using `GitHub.Copilot.SDK`; authenticate using a supported interactive/deployable method; start a constrained session and validate structured tool output | Works after process restart without an OpenAI API key, or a documented blocker produces a rules-only MVP decision |
 | Copilot tool lockdown | Verify permission handler denies filesystem, shell, browser, network, MCP, and arbitrary custom tool access; expose only `submit_job_analysis` | Adversarial prompt cannot cause a tool action |
-| JobSpy boundary | Pin package/image; wrap one request into FastAPI JSON response; simulate normal, partial, 403/429, timeout, malformed result | .NET can distinguish `Succeeded`, `Partial`, `Blocked`, `Failed` |
+| JobSpy boundary | Pin package/environment; wrap one request into FastAPI JSON response; simulate normal, partial, 403/429, timeout, malformed result | .NET can distinguish `Succeeded`, `Partial`, `Blocked`, `Failed` |
 | DOU parser | Capture permitted, minimized RSS fixtures, parse dates/link/GUID/escaped HTML | No live source required for parser tests |
-| Compose persistence | Start/restart service against named volume and prove SQLite/WAL state survives | No data loss after recreation |
+| Native persistence | Start/restart a published executable against platform application data and prove SQLite/WAL state survives | No data loss after recreation |
+| Compose optionality | Start/restart the optional Compose profile against a named volume | No data loss after recreation; native behavior is unaffected |
 
 **Decision gate:** If Copilot cannot authenticate safely in the target deployment,
 ship MVP with `IJobAnalyzer` and the adapter disabled. Do not delay DOU/rules/
@@ -75,8 +79,10 @@ Telegram work or introduce an unsupported credential workaround.
 - Singleton process/instance guard before migrations and scheduling.
 - SQLite context factory, migrations, foreign keys, WAL initialization, bounded
   busy timeout, and startup migration protocol.
+- Native run/publish guidance for `win-x64`, `osx-arm64`, `osx-x64`, and Linux
+  RIDs; OS-appropriate application-data and protected-secret adapters.
 - Dockerfiles, local `.env.example`, Compose file, named data volume, secret
-  mounts, non-root containers, and health checks.
+  mounts, non-root containers, and health checks as an optional profile.
 - Structured logging, privacy redaction policy, basic OpenTelemetry activity/
   metrics wiring, and loopback-only health/readiness endpoint if needed.
 
@@ -84,9 +90,10 @@ Telegram work or introduce an unsupported credential workaround.
 
 - `dotnet build` and baseline tests pass.
 - Starting a second worker exits before migration or scan.
-- Migrations can apply to an empty mounted volume.
+- Migrations can apply to an empty native application-data directory.
 - Readiness is false until database/migration/lock setup succeeds.
-- Container runs as non-root and secrets are not present in image layers.
+- Native process can read only its configured data/secrets; optional containers
+  run non-root and secrets are not present in image layers.
 
 ### WP-02: Domain model and persistence
 
@@ -117,7 +124,7 @@ Telegram work or introduce an unsupported credential workaround.
 **Deliverables**
 
 - YAML and JSON schema for `CandidateProfile`.
-- Configurable profile file discovery/mount path.
+- Configurable profile file discovery path, with an optional Compose mount path.
 - Markdown supplemental CV loader with size cap and contact-data redaction.
 - Validation errors with field path and remediation hint.
 - Hard-filter engine with explicit rule/result/reason/evidence ID.
@@ -170,7 +177,8 @@ Telegram work or introduce an unsupported credential workaround.
 
 - Minimal FastAPI app, Pydantic request/response models, `/health`, `/version`,
   and `/v1/search`.
-- Exact lockfile/package pin; image built from a minimal supported Python base.
+- Exact lockfile/package pin; documented local virtual environment and optional
+  image built from a minimal supported Python base.
 - Allow-list source selection and bounded request/result sizes.
 - Source-specific timeouts/concurrency limit; LinkedIn default `1`.
 - Clear status/error envelope, including partial result and retry/backoff hint.
@@ -186,7 +194,7 @@ Telegram work or introduce an unsupported credential workaround.
 
 **Acceptance**
 
-- Default Compose configuration has JobSpy source disabled.
+- Default native and Compose configuration has JobSpy source disabled.
 - A 429 fixture blocks only this source; DOU scan still completes.
 - Unknown extra JSON fields are tolerated; missing required contract fields fail
   safely and mark source degraded.
@@ -273,8 +281,9 @@ Telegram work or introduce an unsupported credential workaround.
 
 - `doctor`, `run-once`, migration, backup, restore, and setup documentation.
 - Example profile and sanitized source fixtures.
-- Compose onboarding, secret provisioning, first Telegram message, source
-  enabling/disabling, and upgrade/rollback docs.
+- Native onboarding, platform secret provisioning, first Telegram message, source
+  enabling/disabling, direct executable upgrade/rollback, and optional Compose
+  deployment docs.
 - Retention/cleanup scheduled job for permitted data.
 - Privacy-safe metrics/log schema and alert/freshness guidance.
 - CI: formatting, build, unit tests, contract tests, integration tests, image
@@ -311,7 +320,8 @@ because they are newer.
 | Copilot | Output validation, no-tools policy, timeout, injection corpus, invalid provider output |
 | Telegram | Escaping, limits, 429, transient/permanent failures, unknown send outcome |
 | Integration | Fixture -> normalize -> persist -> rules -> outbox -> mocked Telegram |
-| Compose smoke | Start, health, volume persistence, dependency isolation, secrets permissions |
+| Native smoke | Direct `dotnet run`/published executable startup, platform data path, secret resolution, restart persistence |
+| Compose smoke | Optional profile: start, health, volume persistence, dependency isolation, secrets permissions |
 
 ## 6. Operational commands
 
@@ -330,15 +340,33 @@ job-hunter restore --input <safe-backup>
 `run-once` is the primary local troubleshooting and test mode. It must not
 silently use production secrets outside explicitly configured local environment.
 
-## 7. Compose design
+## 7. Deployment profiles
+
+### Native profile - primary
+
+The worker must be directly startable with `dotnet run` in development and a
+published executable for `win-x64`, `osx-arm64`, `osx-x64`, and selected Linux
+RIDs. It owns an `IAppDataDirectory` abstraction that resolves local
+platform-appropriate application data:
+
+| Platform | Default per-user state directory |
+|---|---|
+| Windows | `%LOCALAPPDATA%\JobHunter` |
+| macOS | `~/Library/Application Support/JobHunter` |
+| Linux | `$XDG_DATA_HOME/job-hunter` or `~/.local/share/job-hunter` |
+
+Implement `ISecretReader` with a developer Secret Manager implementation and
+platform/release implementations selected through composition. Implement and
+test direct startup before any Compose work. JobSpy is configured by a loopback
+endpoint and may be absent.
+
+### Compose profile - optional
 
 ```text
+# compose.yaml - worker-only base profile
 services:
   worker:
     image: job-hunter-worker
-    depends_on:
-      jobspy:
-        condition: service_healthy
     volumes:
       - job-hunter-data:/var/lib/job-hunter
       - ./profile.yaml:/app/config/profile.yaml:ro
@@ -346,6 +374,8 @@ services:
       - telegram_bot_token
       - copilot_credential_optional
 
+# compose.jobspy.yaml - explicit optional overlay
+  # The worker is configured with the JobSpy URL only when this overlay is used.
   jobspy:
     image: job-hunter-jobspy
     expose:
@@ -356,9 +386,11 @@ volumes:
   job-hunter-data:
 ```
 
-`depends_on` health ordering is a convenience only. The worker must tolerate
-JobSpy being unavailable and continue DOU work. The Python service must not
-write SQLite; the worker must not depend on JobSpy for its own readiness.
+The worker-only base Compose profile has no JobSpy startup dependency. An
+optional JobSpy overlay may use health ordering as a convenience, but the worker
+must tolerate JobSpy being unavailable and continue DOU work. The Python service
+must not write SQLite; the worker must not depend on JobSpy for its own
+readiness.
 
 ## 8. Security review checklist
 
@@ -367,10 +399,12 @@ write SQLite; the worker must not depend on JobSpy for its own readiness.
 - [ ] Source HTML/text is treated as untrusted and bounded.
 - [ ] Copilot authentication method is supported for the selected deployment and
       survives a controlled restart.
-- [ ] Docker secrets are not present in logs, image layers, env dumps, or DB.
+- [ ] Native secret providers and optional Docker secrets are not present in
+      logs, image layers, environment dumps, or DB.
 - [ ] LinkedIn experimental opt-in warning is explicit; blocking has no bypass.
 - [ ] DOU and JobSpy clients have finite timeout, concurrency, and retry budgets.
-- [ ] SQLite exists only in a local named volume and is written only by .NET.
+- [ ] SQLite exists only in local platform application data or an optional local
+      named volume and is written only by .NET.
 - [ ] Telegram HTML is escaped and URLs are allowed HTTPS URLs.
 - [ ] Outbox does not claim exact-once delivery.
 - [ ] Backup has access controls and restore has been tested.
@@ -385,10 +419,13 @@ write SQLite; the worker must not depend on JobSpy for its own readiness.
 - [ ] JobSpy/LinkedIn cannot run without both enablement and risk acknowledgement.
 - [ ] AI is disabled by default and no OpenAI key is required.
 - [ ] AI-disabled pipeline has an end-to-end passing test.
-- [ ] Copilot adapter has passing container smoke test or is explicitly disabled
-      with documented rules-only fallback.
+- [ ] Copilot adapter has passing native Windows/macOS smoke coverage or is
+      explicitly disabled with documented rules-only fallback.
 - [ ] Telegram test destination is distinct from a personal production chat.
-- [ ] Database survives container recreation; backup restore is verified.
+- [ ] Database survives native process restart; optional Compose volume
+      recreation and backup restore are verified.
+- [ ] Docker is absent during native Windows/macOS clean-machine onboarding
+      rehearsal.
 - [ ] Logs/metrics privacy review complete.
 - [ ] README onboarding follows a clean-machine rehearsal.
 
@@ -396,12 +433,14 @@ write SQLite; the worker must not depend on JobSpy for its own readiness.
 
 These decisions must be made only when their relevant phase begins:
 
-1. Exact Copilot authentication method in Docker after WP-00 evidence.
+1. Exact Copilot authentication method for native Windows/macOS after WP-00
+   evidence; Compose support is secondary.
 2. AI model selection, budget, maximum analysis size, and quality threshold.
 3. Profile schema field names and default scoring values after real fixture review.
 4. Job retention duration and encrypted backup location.
 5. DOU detail-page enrichment necessity after RSS field-gap measurement.
-6. Native Windows/macOS/Linux service packaging after Docker MVP stabilizes.
+6. Native Windows/macOS/Linux auto-start packaging after direct-run MVP
+   stabilizes.
 7. Telegram inbound commands/buttons after a persistent saved/application workflow
    exists.
 8. Ollama model and hardware support after quality/latency evaluation.

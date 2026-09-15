@@ -9,6 +9,7 @@ implementation contract is:
 
 - [Product requirements document](docs/PRD.md)
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
+- [Deployment guide](docs/DEPLOYMENT.md)
 - [Copilot instructions](.github/copilot-instructions.md)
 
 ## Target architecture
@@ -19,8 +20,12 @@ DOU RSS ─────────┐
 JobSpy API opt-in ┘
 ```
 
-The .NET Worker is the only SQLite writer. JobSpy is an isolated Python service
-used only for the experimental, opt-in LinkedIn connector.
+The native .NET Worker is the primary runtime: it runs directly on Windows,
+macOS, and Linux without Docker. Docker Compose is an optional deployment
+profile for a reproducible isolated JobSpy sidecar or a home-lab/server setup.
+
+The .NET Worker is the only SQLite writer. JobSpy is an isolated Python
+sidecar used only for the experimental, opt-in LinkedIn connector.
 
 ## Status
 
