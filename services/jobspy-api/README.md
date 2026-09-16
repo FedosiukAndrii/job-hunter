@@ -114,6 +114,21 @@ py -3.11 -m venv .venv
 
 Review package and image changes before replacing a lock or base-image digest.
 
+Audit the locked development environment with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip_audit --requirement requirements-dev.lock --disable-pip --strict --ignore-vuln PYSEC-2026-1604
+```
+
+The single ignored advisory is
+`PYSEC-2026-1604`/`CVE-2025-46656` in `markdownify 0.13.1`.
+`python-jobspy 1.1.82` requires `markdownify <0.14.0`, while the upstream fix is
+`0.14.1`. The vulnerable conversion path expands malformed HTML heading names;
+this adapter always requests `description_format="plain"`, which is covered by
+the backend contract tests and does not invoke JobSpy's Markdown converter.
+Keep this exception narrow and remove it as soon as `python-jobspy` accepts a
+fixed `markdownify` release.
+
 ## Optional container
 
 The image runs as UID/GID 10001 and binds to `0.0.0.0` only inside the

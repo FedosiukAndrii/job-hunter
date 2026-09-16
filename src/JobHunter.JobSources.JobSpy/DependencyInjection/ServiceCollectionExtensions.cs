@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
             .Bind(configuration.GetSection(JobSpyOptions.SectionName))
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<JobSpyOptions>, JobSpyOptionsValidator>();
+        services.AddSingleton<IJobSourceSubscriptionProvider, JobSpySourceSubscriptionProvider>();
         services.AddHttpClient<JobSpyJobSource>(ConfigureClient)
             .ConfigurePrimaryHttpMessageHandler(
                 () => new SocketsHttpHandler

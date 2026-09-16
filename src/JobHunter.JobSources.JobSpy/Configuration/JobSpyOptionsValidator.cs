@@ -24,6 +24,14 @@ public sealed class JobSpyOptionsValidator : IValidateOptions<JobSpyOptions>
                 "Sources:LinkedInJobSpy:Endpoint must be an absolute loopback HTTP or HTTPS URL without credentials.");
         }
 
+        if (options.Enabled
+            && (string.IsNullOrWhiteSpace(options.SearchTerm)
+                || options.SearchTerm.Trim().Length > 256))
+        {
+            failures.Add(
+                "Sources:LinkedInJobSpy:SearchTerm must contain between 1 and 256 characters when the source is enabled.");
+        }
+
         if (options.MinimumIntervalMinutes is < 60 or > 10080)
         {
             failures.Add(

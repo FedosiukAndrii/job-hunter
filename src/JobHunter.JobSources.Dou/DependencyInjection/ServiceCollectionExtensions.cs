@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<DouOptions>, DouOptionsValidator>();
         services.AddSingleton<DouRssParser>();
+        services.AddSingleton<IJobSourceSubscriptionProvider, DouSourceSubscriptionProvider>();
         services.AddHttpClient<DouJobSource>()
             .ConfigurePrimaryHttpMessageHandler(
                 () => new SocketsHttpHandler

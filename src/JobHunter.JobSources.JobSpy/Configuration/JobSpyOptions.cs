@@ -10,6 +10,8 @@ public sealed class JobSpyOptions
 
     public string Endpoint { get; set; } = "http://127.0.0.1:8080/";
 
+    public string SearchTerm { get; set; } = ".NET";
+
     public int MinimumIntervalMinutes { get; set; } = 60;
 
     public int RequestTimeoutSeconds { get; set; } = 45;
