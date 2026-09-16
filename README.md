@@ -28,7 +28,7 @@ sidecar used only for the experimental, opt-in LinkedIn connector.
 
 ## Status
 
-Implementation is in progress. WP-01 through WP-05 now provide:
+Implementation is in progress. WP-01 through the core WP-08 path now provide:
 
 - the .NET 10 Worker foundation, project boundaries, configuration validation,
   single-instance guard, SQLite migration protocol, and native data paths;
@@ -40,12 +40,27 @@ Implementation is in progress. WP-01 through WP-05 now provide:
   retries, canonical URLs, fixture tests, and optional detail enrichment;
 - an isolated, opt-in JobSpy/FastAPI service plus a loopback-only .NET adapter
   with explicit blocked/degraded states and no access-control evasion;
+- persisted source scheduling, bounded orchestration, deterministic scoring,
+  continuously renewed run leases, durable notification intent, and idempotent
+  cancellation/restart behavior;
+- an optional constrained Copilot analyzer with provider-neutral contracts,
+  local schema/evidence validation, confidence fallback, and no ambient tools;
+- a durable Telegram outbox with safe HTML rendering, bounded retries,
+  restart-safe destination-wide rate-limit backoff for existing and newly
+  enqueued notifications, unknown-send handling, destination disabling, and
+  setup validation;
+- `doctor`, `run-once`, 30-day operational-record cleanup, and manual
+  backup/restore/integrity commands;
 - local-only automated .NET and Python tests in CI; normal tests do not contact
-  job boards, Telegram, or AI providers.
+  job boards, Telegram, or AI providers, and CI audits locked dependencies.
 
-WP-06 source scheduling and scoring orchestration, optional AI, and Telegram
-delivery remain upcoming. The current `run` command initializes the database and
-candidate profile, but does not yet schedule source fetches.
+Remaining release work is primarily live credential-backed smoke testing,
+clean-machine native validation, privacy/log review, and remaining native
+packaging validation. A local self-contained `win-x64` publish/startup smoke
+test passes, and self-contained `osx-arm64`, `osx-x64`, and `linux-x64`
+cross-publishes complete successfully.
+Worker Docker/Compose and multi-architecture images are deferred until after the
+native MVP; the optional JobSpy sidecar image remains available.
 
 ## Build and test
 
@@ -70,25 +85,36 @@ Pop-Location
 Apply migrations to the platform-default application-data directory:
 
 ```powershell
-dotnet run --project src/JobHunter.Worker -- migrate
+dotnet run --project src\JobHunter.Worker -- migrate
 ```
 
 Copy and customize the safe example profile, then start the Worker host:
 
 ```powershell
 Copy-Item deploy\examples\profile.yaml C:\JobHunterData\profile.yaml
-dotnet run --project src/JobHunter.Worker -- run --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
+dotnet run --project src\JobHunter.Worker -- doctor --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
+dotnet run --project src\JobHunter.Worker -- run-once --source dou --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
+dotnet run --project src\JobHunter.Worker -- run --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
 ```
+
+`run` schedules enabled sources and, when Telegram is enabled, dispatches the
+durable outbox. `run-once` forces one enabled, non-blocked source scan regardless
+of its next scheduled time, but does not start the continuous Telegram
+dispatcher. It returns a nonzero exit code unless every selected subscription
+completes successfully.
 
 Database maintenance commands require absolute output paths and never overwrite
-an existing restore destination:
+an existing restore destination. Put backups only in an operator-selected,
+encrypted or access-controlled location:
 
 ```powershell
-dotnet run --project src/JobHunter.Worker -- backup --output C:\JobHunterBackups\job-hunter.db
-dotnet run --project src/JobHunter.Worker -- integrity-check
-dotnet run --project src/JobHunter.Worker -- restore --input C:\JobHunterBackups\job-hunter.db --output C:\JobHunterRestore\job-hunter.db
+dotnet run --project src\JobHunter.Worker -- backup --output C:\JobHunterBackups\job-hunter.db
+dotnet run --project src\JobHunter.Worker -- integrity-check
+dotnet run --project src\JobHunter.Worker -- restore --input C:\JobHunterBackups\job-hunter.db --output C:\JobHunterRestore\job-hunter.db
 ```
 
-No Telegram, AI, Python, or Docker dependency is needed for the native
-DOU/rules foundation. See the [deployment guide](docs/DEPLOYMENT.md) and the
+No Telegram, AI, Python, or Docker dependency is needed for native DOU
+discovery, persistence, and rules scoring. See the
+[deployment guide](docs/DEPLOYMENT.md) for Telegram, User Secrets, Copilot,
+retention, and operator commands, and the
 [JobSpy sidecar guide](services/jobspy-api/README.md) for optional setup.

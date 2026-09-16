@@ -51,8 +51,9 @@ AI analysis, and notifying the user only once per qualifying vacancy.
 - Send one immediate Telegram message for each job above its applicable
   notification threshold.
 - Run directly on Windows, macOS, and Linux without Docker.
-- Offer Docker Compose as an optional, reproducible deployment profile, not as a
-  prerequisite for the primary job-search flow.
+- Preserve a path to an optional, reproducible Docker Compose deployment after
+  the native MVP; it must never become a prerequisite for the primary
+  job-search flow.
 
 ### 3.2 Success criteria
 
@@ -79,6 +80,8 @@ AI analysis, and notifying the user only once per qualifying vacancy.
 - Telegram commands, callback buttons, webhooks, or inbound polling.
 - Exact-once external delivery; Telegram `sendMessage` cannot provide a client
   idempotency key.
+- Worker Docker/Compose packaging and multi-architecture worker images in the
+  native MVP release. The isolated optional JobSpy image remains supported.
 - Vector search, embeddings, or automated application tracking.
 - A durable enterprise scheduler such as Quartz/Hangfire.
 
@@ -167,8 +170,11 @@ must be able to audit why a job was selected.
   timestamp and precision, and application URL separately.
 - Keep first/last seen timestamps, last checked time, lifecycle state, status
   reason, and content revisions.
-- Retention limits for raw payloads, descriptions, logs, and backups are
-  configurable and documented before release.
+- Completed source-run/observation records, delivery attempts, and application
+  events use a configurable 30-day default retention period with daily cleanup.
+  Old terminal outbox payloads are scrubbed while their unique keys remain as
+  deduplication tombstones. Core jobs, revisions, profiles, and evaluations are
+  retained.
 
 ### FR-05: Deduplication and lifecycle
 
@@ -236,8 +242,10 @@ must be able to audit why a job was selected.
 - Escape all source-controlled fields for Telegram HTML. Never include the full
   vacancy, CV, contact details, recruiter email, or private notes by default.
 - Enforce per-chat delivery <= 1 message/second and a bounded global queue.
-- Handle 429 using Telegram `retry_after`. Network/5xx failures retry with a
-  bounded jittered backoff; permanent 403/chat errors disable the destination.
+- Handle 429 using Telegram `retry_after`. Persist the destination cooldown so
+  it survives restart and also defers notifications enqueued after the 429.
+  Network/5xx failures retry with a bounded jittered backoff; permanent
+  403/chat errors disable the destination.
 - A send timeout after a possibly accepted request becomes `Unknown`; default
   policy favours suppressing automatic duplicate delivery over duplicate alerts.
 
@@ -249,8 +257,10 @@ must be able to audit why a job was selected.
   deduplication count, rule/AI result status, queue depth, delivery outcomes,
   SQLite busy retries, and last-success age.
 - Provide liveness, readiness, and source/delivery freshness indicators.
-- Back up SQLite consistently to an encrypted/access-controlled location, retain
-  rotating copies, and test restore regularly.
+- Provide a consistent manual SQLite backup command targeting an
+  operator-selected encrypted/access-controlled location. The operator manages
+  copy rotation and tests restore regularly; the application stores no default
+  backup destination.
 - A `doctor` command validates the selected deployment profile, application-data
   directory, secret provider, database writability, configured sources, Telegram
   connectivity, and optional AI/JobSpy health.
@@ -415,8 +425,8 @@ and the following manual checks pass:
 
 - A clean Windows and macOS machine can run the DOU + rules + Telegram path from
   `dotnet run` or the published executable without Docker.
-- Docker Compose restart, when that optional profile is used, preserves the named
-  SQLite volume and does not create a duplicate alert.
+- Docker Compose restart and named-volume validation apply when the deferred
+  Worker Compose profile is implemented; they do not gate the native MVP.
 - `doctor` identifies a missing secret, inaccessible database, unavailable
   JobSpy, invalid Telegram destination, and unavailable optional Copilot adapter.
 - A backup restores into an isolated volume and passes integrity checks.

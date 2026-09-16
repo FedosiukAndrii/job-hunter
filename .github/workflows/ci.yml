@@ -31,6 +31,9 @@ jobs:
       - name: Restore
         run: dotnet restore JobHunter.slnx
 
+      - name: Audit dependencies
+        run: dotnet list JobHunter.slnx package --vulnerable --include-transitive
+
       - name: Verify formatting
         run: dotnet format JobHunter.slnx --no-restore --verify-no-changes
 
@@ -74,6 +77,14 @@ jobs:
 
       - name: Verify dependencies
         run: python -m pip check
+
+      - name: Audit locked dependencies
+        run: >-
+          python -m pip_audit
+          --requirement requirements-dev.lock
+          --disable-pip
+          --strict
+          --ignore-vuln PYSEC-2026-1604
 
       - name: Test mocked sidecar
         run: python -m pytest

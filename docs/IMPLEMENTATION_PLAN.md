@@ -19,15 +19,16 @@
 
 ### Current delivery priority
 
-The JobSpy boundary spike and current WP-05 contract are feature-frozen. Until
-the core flow is usable, JobSpy changes are limited to correctness, security,
-contract compatibility, and isolation fixes; no new source capabilities or
-operator features should be added.
+The JobSpy boundary and current WP-05 contract remain feature-frozen except for
+correctness, security, contract compatibility, diagnostics, and isolation
+fixes.
 
-Implementation proceeds with WP-06 and then the rules-only WP-08 path so that
-DOU discovery, deterministic scoring, durable notification intent, and mocked
-Telegram delivery work end to end. Optional AI work in WP-07 and further JobSpy
-development resume only after that core-flow acceptance path passes.
+WP-06, WP-07, and the outbound WP-08 core path are implemented with
+fixture/mocked coverage. Current work is WP-09 release hardening: operator
+documentation, dependency auditing, native smoke tests, privacy review, and
+credential-backed Telegram/Copilot validation. Worker Docker/Compose packaging
+and multi-architecture images are explicitly deferred until after the native
+MVP; they must not become a prerequisite for the core pipeline.
 
 ## 2. Repository layout
 
@@ -228,6 +229,13 @@ until the DOU -> rules -> Telegram core flow passes end to end.
 
 ### WP-06: Scoring pipeline orchestration
 
+**Status:** Implemented with persisted scheduling, source-run leases, bounded
+fetch concurrency, serialized SQLite writes, rules/optional-AI evaluation, and
+durable notification intent. Integration tests cover overlapping ticks,
+repeated polling, partial runs, AI-disabled operation, revision re-evaluation,
+one-notification-per-job behavior, long-running lease renewal, cancellation
+release, and disabled-source recovery.
+
 **Deliverables**
 
 - `ScanOrchestrator` checks due source subscriptions using persisted times.
@@ -246,6 +254,12 @@ until the DOU -> rules -> Telegram core flow passes end to end.
 - Partial source run never marks absent jobs removed.
 
 ### WP-07: AI abstraction and Copilot adapter
+
+**Status:** Implemented behind provider-neutral contracts with Copilot disabled
+by default. Structured results, evidence references, redaction, local
+validation, bounded queue/concurrency/time/input/output, transient retry, and
+rules-only fallback are covered by deterministic tests. A live authenticated
+Copilot smoke test remains a release validation task.
 
 **Deliverables**
 
@@ -281,6 +295,14 @@ until the DOU -> rules -> Telegram core flow passes end to end.
 
 ### WP-08: Telegram notifications
 
+**Status:** The outbound MVP path is implemented with a private-chat setup
+workflow, safe renderer, durable outbox state machine, bounded retries,
+per-destination rate limiting, restart-safe destination-wide 429 deferral for
+existing and newly enqueued rows, permanent destination disabling, and
+timeout-as-unknown behavior. Mocked
+contract/integration tests pass; a live test requires a dedicated private test
+chat and bot token.
+
 **Deliverables**
 
 - Telegram bot setup workflow that validates destination ownership/chat ID.
@@ -297,12 +319,26 @@ until the DOU -> rules -> Telegram core flow passes end to end.
 
 - Every dynamic field is escaped.
 - Rendered message is <= 4,096 characters.
-- 429 waits/requeues correctly.
+- 429 waits/requeues correctly, including a final retry attempt, restart, and
+  notifications enqueued during the cooldown.
 - 403 disables destination.
 - Timeout after request causes `Unknown`, not automatic duplicate send.
 - Crash before/after intent/send/confirmation produces valid recovery state.
 
 ### WP-09: Operator experience and release hardening
+
+**Status:** In progress. `doctor`, `run-once`, migration, setup, backup, restore,
+integrity checking, 30-day cleanup, documentation, and .NET/Python dependency
+audits are implemented. Native clean-machine/publish validation, live
+Telegram/Copilot smoke tests, and final privacy review remain; a local
+self-contained `win-x64` publish/startup smoke test passes, and
+`osx-arm64`/`osx-x64`/`linux-x64` cross-publishes succeed. Clean-machine Windows
+and macOS validation remains. Worker Docker/Compose and multi-architecture
+image CI are deferred from the native MVP.
+
+`doctor` includes persisted blocked/disabled source and Telegram destination
+state, not only configuration and network availability. `run-once` exits
+nonzero for skipped, partial, blocked, or failed execution.
 
 **Deliverables**
 
@@ -440,17 +476,18 @@ readiness.
 
 - [ ] WP-00 through WP-09 acceptance criteria complete.
 - [ ] PRD acceptance scenarios pass.
-- [ ] All normal automated tests use fixtures/mocks, not production job boards.
+- [x] All normal automated tests use fixtures/mocks, not production job boards.
 - [ ] Dependency versions and licenses reviewed.
-- [ ] Default source configuration enables DOU only.
-- [ ] JobSpy/LinkedIn cannot run without both enablement and risk acknowledgement.
-- [ ] AI is disabled by default and no OpenAI key is required.
-- [ ] AI-disabled pipeline has an end-to-end passing test.
+- [x] Default source configuration enables DOU only.
+- [x] JobSpy/LinkedIn cannot run without both enablement and risk acknowledgement.
+- [x] AI is disabled by default and no OpenAI key is required.
+- [x] AI-disabled pipeline has an end-to-end passing test.
 - [ ] Copilot adapter has passing native Windows/macOS smoke coverage or is
       explicitly disabled with documented rules-only fallback.
 - [ ] Telegram test destination is distinct from a personal production chat.
-- [ ] Database survives native process restart; optional Compose volume
-      recreation and backup restore are verified.
+- [x] Database survives native process restart and backup/restore is covered by
+      integration tests. Compose volume validation is deferred with the Worker
+      Compose profile.
 - [ ] Docker is absent during native Windows/macOS clean-machine onboarding
       rehearsal.
 - [ ] Logs/metrics privacy review complete.
@@ -458,17 +495,13 @@ readiness.
 
 ## 10. Explicit deferred decisions
 
-These decisions must be made only when their relevant phase begins:
+The remaining decisions must be made only when their relevant phase begins:
 
-1. Exact Copilot authentication method for native Windows/macOS after WP-00
-   evidence; Compose support is secondary.
-2. AI model selection, budget, maximum analysis size, and quality threshold.
-3. Job retention duration and encrypted backup location.
-4. Native Windows/macOS/Linux auto-start packaging after direct-run MVP
+1. Native Windows/macOS/Linux auto-start packaging after direct-run MVP
    stabilizes.
-5. Telegram inbound commands/buttons after a persistent saved/application workflow
+2. Telegram inbound commands/buttons after a persistent saved/application workflow
    exists.
-6. Ollama model and hardware support after quality/latency evaluation.
+3. Ollama model and hardware support after quality/latency evaluation.
 
 Resolved during WP-03/WP-04:
 
@@ -477,3 +510,30 @@ Resolved during WP-03/WP-04:
   location/language 10, domain 10, and compensation 5.
 - DOU detail-page enrichment is optional and disabled by default. RSS remains
   the primary low-rate discovery path.
+
+Resolved during WP-07/WP-09:
+
+- Native Copilot authentication uses either the SDK's supported logged-in-user
+  path or the optional `AI:Copilot:GitHubToken` secret. Compose support remains
+  deferred with Worker container packaging.
+- Copilot uses model `auto` unless `AI:Copilot:Model` is explicitly configured.
+- The default AI guardrails are 48,000 input characters, 4,000 output
+  characters, a 60-second deadline, concurrency `1`, and queue capacity `32`.
+- AI confidence below `0.65` is persisted as insufficient confidence and falls
+  back to rules-only scoring. Accepted AI uses an equal-weight rules/AI score
+  against `rulesAndAiThreshold`; transient results may retry after 60 minutes.
+- The stable Copilot SDK does not expose a supported per-session credit cap.
+  The adapter instead allows one terminal submission tool and enforces the
+  documented time, size, concurrency, queue, and retry bounds.
+- MVP notification version remains `1`: each destination receives at most one
+  notification per job. Job/profile/rubric changes may be re-evaluated but do
+  not create another notification.
+- Operational records are retained for 30 days and cleaned every 24 hours.
+  Terminal outbox rows remain as deduplication tombstones, while old payloads
+  are scrubbed.
+- Backup is manual and requires an operator-selected encrypted or
+  access-controlled absolute output path; no default backup destination is
+  persisted.
+- Worker Docker/Compose packaging and multi-architecture image builds are
+  deferred until after the native MVP. The optional JobSpy image remains
+  isolated and does not change the native deployment path.
