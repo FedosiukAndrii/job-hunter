@@ -14,6 +14,12 @@ public sealed class CanonicalJobUrlTests
     [InlineData(
         "http://jobs.dou.ua:80/vacancies/123?remote=true",
         "http://jobs.dou.ua/vacancies/123?remote=true")]
+    [InlineData(
+        "https://jobs.dou.ua/vacancies/123?z=last&utm_medium=rss&a=first",
+        "https://jobs.dou.ua/vacancies/123?a=first&z=last")]
+    [InlineData(
+        "https://www.linkedin.com/jobs/view/123?trk=public_jobs&trackingId=opaque&refId=opaque&position=1",
+        "https://www.linkedin.com/jobs/view/123?position=1")]
     public void CreateRemovesTrackingDataAndNormalizesAuthority(string source, string expected)
     {
         var result = CanonicalJobUrl.Create(source);

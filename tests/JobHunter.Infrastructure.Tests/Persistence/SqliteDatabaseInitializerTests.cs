@@ -26,7 +26,9 @@ public sealed class SqliteDatabaseInitializerTests
         await using var context = await contextFactory.CreateDbContextAsync();
         var appliedMigrations = await context.Database.GetAppliedMigrationsAsync();
 
-        Assert.Equal(["20260915170000_Initial"], appliedMigrations);
+        Assert.Equal(
+            ["20260915170000_Initial", "20260915200129_CoreModel"],
+            appliedMigrations);
 
         await context.Database.OpenConnectionAsync();
         try

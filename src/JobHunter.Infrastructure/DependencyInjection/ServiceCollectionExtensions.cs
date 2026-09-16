@@ -1,8 +1,11 @@
 using JobHunter.Application.Persistence;
+using JobHunter.Application.Evaluation;
+using JobHunter.Application.Profiles;
 using JobHunter.Application.Runtime;
 using JobHunter.Application.Storage;
 using JobHunter.Infrastructure.Configuration;
 using JobHunter.Infrastructure.Persistence;
+using JobHunter.Infrastructure.Profiles;
 using JobHunter.Infrastructure.Runtime;
 using JobHunter.Infrastructure.Storage;
 using Microsoft.Data.Sqlite;
@@ -27,6 +30,11 @@ public static class ServiceCollectionExtensions
             .Bind(configuration.GetSection(StorageOptions.SectionName))
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<StorageOptions>, StorageOptionsValidator>();
+        services
+            .AddOptions<ProfileOptions>()
+            .Bind(configuration.GetSection(ProfileOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<ProfileOptions>, ProfileOptionsValidator>();
 
         services.AddSingleton<IAppDataDirectory, PlatformAppDataDirectory>();
         services.AddSingleton<IApplicationInstanceGuard, SingleInstanceFileGuard>();
@@ -49,6 +57,13 @@ public static class ServiceCollectionExtensions
                     typeof(JobHunterDbContext).Assembly.FullName));
         });
         services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
+        services.AddSingleton<IDatabaseMaintenance, SqliteDatabaseMaintenance>();
+        services.AddSingleton<IJobIngestionStore, EfJobIngestionStore>();
+        services.AddSingleton<ISourceRunStore, EfSourceRunStore>();
+        services.AddSingleton<ICandidateProfileLoader, FileCandidateProfileLoader>();
+        services.AddSingleton<ICandidateProfileStore, EfCandidateProfileStore>();
+        services.AddSingleton<IRuleEvaluationStore, EfRuleEvaluationStore>();
+        services.AddSingleton<DeterministicJobEvaluator>();
 
         return services;
     }

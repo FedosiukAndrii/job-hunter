@@ -51,18 +51,32 @@ public sealed record CanonicalJobUrl
 
         var retainedParameters = query[1..]
             .Split('&', StringSplitOptions.RemoveEmptyEntries)
-            .Where(parameter => !IsTrackingParameter(parameter));
+            .Where(parameter => !IsTrackingParameter(parameter))
+            .OrderBy(GetParameterName, StringComparer.Ordinal)
+            .ThenBy(parameter => parameter, StringComparer.Ordinal);
 
         return string.Join('&', retainedParameters);
     }
 
-    private static bool IsTrackingParameter(string parameter)
+    private static string GetParameterName(string parameter)
     {
         var separatorIndex = parameter.IndexOf('=');
-        var encodedName = separatorIndex < 0 ? parameter : parameter[..separatorIndex];
+        return separatorIndex < 0 ? parameter : parameter[..separatorIndex];
+    }
+
+    private static bool IsTrackingParameter(string parameter)
+    {
+        var encodedName = GetParameterName(parameter);
         var name = Uri.UnescapeDataString(encodedName.Replace('+', ' '));
 
         return name.Equals("from", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("lipi", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("midSig", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("midToken", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("refId", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("trackingId", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("trk", StringComparison.OrdinalIgnoreCase)
+            || name.Equals("trkInfo", StringComparison.OrdinalIgnoreCase)
             || name.StartsWith("utm_", StringComparison.OrdinalIgnoreCase);
     }
 }

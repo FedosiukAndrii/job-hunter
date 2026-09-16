@@ -37,7 +37,7 @@ public sealed class SqliteRestartPersistenceTests
                 await command.ExecuteScalarAsync(),
                 System.Globalization.CultureInfo.InvariantCulture);
 
-            Assert.Equal(1L, migrationCount);
+            Assert.Equal(2L, migrationCount);
         }
         finally
         {
