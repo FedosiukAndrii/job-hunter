@@ -47,6 +47,55 @@ public sealed class EfSourceRunStoreTests
     }
 
     [Fact]
+    public async Task ExpiredLeaseRecoveryPreservesConfigurationDisabledState()
+    {
+        await using var host = await PersistenceTestHost.CreateAsync();
+        var start = DateTimeOffset.Parse(
+            "2026-09-15T10:00:00Z",
+            CultureInfo.InvariantCulture);
+        var subscriptionId = await AddSubscriptionAsync(host, start);
+        var runStore = host.Services.GetRequiredService<ISourceRunStore>();
+        var subscriptionStore =
+            host.Services.GetRequiredService<ISourceSubscriptionStore>();
+        var abandoned = await runStore.TryStartAsync(
+            subscriptionId,
+            start,
+            TimeSpan.FromMinutes(1),
+            CancellationToken.None);
+        Assert.NotNull(abandoned);
+
+        await subscriptionStore.SynchronizeAsync(
+            [
+                new JobSourceSubscriptionDefinition(
+                    SourceName.Dou,
+                    "dotnet",
+                    new Uri("https://jobs.dou.ua/vacancies/feeds/?category=.NET"),
+                    ".NET",
+                    10,
+                    TimeSpan.FromMinutes(12),
+                    enabled: false)
+            ],
+            start.AddSeconds(30),
+            CancellationToken.None);
+        var recoveredCount = await runStore.RecoverExpiredAsync(
+            start.AddMinutes(2),
+            CancellationToken.None);
+
+        Assert.Equal(1, recoveredCount);
+        var contextFactory =
+            host.Services.GetRequiredService<IDbContextFactory<JobHunterDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+        var subscription = await context.SourceSubscriptions.FindAsync(
+            subscriptionId);
+        var abandonedRun = await context.SourceRuns.FindAsync(
+            abandoned.SourceRunId);
+        Assert.False(subscription?.IsEnabled);
+        Assert.Equal(SourceSubscriptionStatus.Disabled, subscription?.Status);
+        Assert.Equal(SourceRunStatus.Failed, abandonedRun?.Status);
+        Assert.Equal("AbandonedLease", abandonedRun?.ErrorCode);
+    }
+
+    [Fact]
     public async Task CompleteBlockedRunPersistsOnlyThatSubscriptionAsBlocked()
     {
         await using var host = await PersistenceTestHost.CreateAsync();

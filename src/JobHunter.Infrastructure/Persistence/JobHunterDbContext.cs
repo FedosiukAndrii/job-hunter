@@ -35,6 +35,9 @@ public sealed class JobHunterDbContext(DbContextOptions<JobHunterDbContext> opti
 
     public DbSet<NotificationOutbox> NotificationOutbox => Set<NotificationOutbox>();
 
+    public DbSet<NotificationDestinationState> NotificationDestinationStates =>
+        Set<NotificationDestinationState>();
+
     public DbSet<DeliveryAttempt> DeliveryAttempts => Set<DeliveryAttempt>();
 
     public DbSet<ApplicationEvent> ApplicationEvents => Set<ApplicationEvent>();
@@ -246,6 +249,7 @@ public sealed class JobHunterDbContext(DbContextOptions<JobHunterDbContext> opti
         var analysis = modelBuilder.Entity<AiAnalysis>();
         analysis.ToTable("AiAnalyses");
         analysis.HasKey(entity => entity.Id);
+        analysis.Property(entity => entity.JobRevisionNumber).IsRequired();
         analysis.Property(entity => entity.Provider).HasMaxLength(64).IsRequired();
         analysis.Property(entity => entity.Model).HasMaxLength(128);
         analysis.Property(entity => entity.Status).HasMaxLength(64).IsRequired();
@@ -260,10 +264,28 @@ public sealed class JobHunterDbContext(DbContextOptions<JobHunterDbContext> opti
             .WithMany()
             .HasForeignKey(entity => entity.CandidateProfileSnapshotId)
             .OnDelete(DeleteBehavior.Restrict);
+        analysis.HasIndex(
+                entity => new
+                {
+                    entity.JobId,
+                    entity.CandidateProfileSnapshotId,
+                    entity.JobRevisionNumber,
+                    entity.Provider,
+                    entity.SchemaVersion,
+                    entity.RubricVersion
+                })
+            .IsUnique();
     }
 
     private static void ConfigureNotifications(ModelBuilder modelBuilder)
     {
+        var destination = modelBuilder.Entity<NotificationDestinationState>();
+        destination.ToTable("NotificationDestinationStates");
+        destination.HasKey(entity => entity.DestinationId);
+        destination.Property(entity => entity.DestinationId).HasMaxLength(256);
+        destination.Property(entity => entity.FailureCode).HasMaxLength(128);
+        destination.Property(entity => entity.ConcurrencyVersion).IsConcurrencyToken();
+
         var outbox = modelBuilder.Entity<NotificationOutbox>();
         outbox.ToTable("NotificationOutbox");
         outbox.HasKey(entity => entity.Id);

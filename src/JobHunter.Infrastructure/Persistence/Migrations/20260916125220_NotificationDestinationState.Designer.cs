@@ -3,6 +3,7 @@ using System;
 using JobHunter.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace JobHunter.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(JobHunterDbContext))]
-    partial class JobHunterDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260916125220_NotificationDestinationState")]
+    partial class NotificationDestinationState
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -31,9 +34,6 @@ namespace JobHunter.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("JobId")
                         .HasColumnType("TEXT");
-
-                    b.Property<int>("JobRevisionNumber")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Model")
                         .HasMaxLength(128)
@@ -73,8 +73,7 @@ namespace JobHunter.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CandidateProfileSnapshotId");
 
-                    b.HasIndex("JobId", "CandidateProfileSnapshotId", "JobRevisionNumber", "Provider", "SchemaVersion", "RubricVersion")
-                        .IsUnique();
+                    b.HasIndex("JobId");
 
                     b.ToTable("AiAnalyses", (string)null);
                 });
@@ -469,9 +468,6 @@ namespace JobHunter.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");
-
-                    b.Property<DateTimeOffset?>("RateLimitedUntilUtc")
-                        .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("TEXT");

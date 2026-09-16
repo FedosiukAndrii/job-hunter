@@ -39,6 +39,7 @@ public sealed class EfJobIngestionStore(IDbContextFactory<JobHunterDbContext> co
         var createdCount = 0;
         var updatedCount = 0;
         var duplicateCount = 0;
+        var persistedJobs = new List<PersistedJob>();
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var record in records)
@@ -180,12 +181,23 @@ public sealed class EfJobIngestionStore(IDbContextFactory<JobHunterDbContext> co
                         queryId,
                         record.RetrievedAtUtc));
             }
+
+            persistedJobs.Add(
+                new PersistedJob(
+                    job.Id,
+                    job.Revisions.Count,
+                    record));
         }
 
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
-        return new JobIngestionResult(records.Count, createdCount, updatedCount, duplicateCount);
+        return new JobIngestionResult(
+            records.Count,
+            createdCount,
+            updatedCount,
+            duplicateCount,
+            persistedJobs);
     }
 
     private static string Serialize<T>(T value) =>

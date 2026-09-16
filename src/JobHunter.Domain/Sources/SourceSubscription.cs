@@ -88,6 +88,39 @@ public sealed class SourceSubscription : IConcurrencyTracked
         DateTimeOffset now) =>
         new(Guid.NewGuid(), source, subscriptionKey, configurationJson, interval, enabled, now);
 
+    public void SynchronizeConfiguration(
+        string configurationJson,
+        TimeSpan interval,
+        bool enabled,
+        DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(configurationJson);
+        if (interval < TimeSpan.FromMinutes(1))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(interval),
+                interval,
+                "A source interval must be at least one minute.");
+        }
+
+        ConfigurationJson = configurationJson;
+        IntervalSeconds = checked((int)interval.TotalSeconds);
+
+        if (!enabled)
+        {
+            Disable(now, "ConfigurationDisabled");
+            return;
+        }
+
+        if (!IsEnabled)
+        {
+            Enable(now);
+            return;
+        }
+
+        UpdatedAtUtc = now;
+    }
+
     public void MarkRunning(DateTimeOffset now)
     {
         EnsureEnabled();
@@ -147,7 +180,9 @@ public sealed class SourceSubscription : IConcurrencyTracked
     {
         IsEnabled = false;
         Status = SourceSubscriptionStatus.Disabled;
+        BackoffUntilUtc = null;
         StatusReasonCode = reasonCode;
+        StatusDiagnostic = null;
         UpdatedAtUtc = now;
     }
 
@@ -164,7 +199,16 @@ public sealed class SourceSubscription : IConcurrencyTracked
 
     public void RecoverAfterAbandonedRun(DateTimeOffset now)
     {
-        EnsureEnabled();
+        if (!IsEnabled)
+        {
+            Status = SourceSubscriptionStatus.Disabled;
+            BackoffUntilUtc = null;
+            StatusReasonCode ??= "ConfigurationDisabled";
+            StatusDiagnostic = null;
+            UpdatedAtUtc = now;
+            return;
+        }
+
         Status = SourceSubscriptionStatus.Enabled;
         BackoffUntilUtc = null;
         StatusReasonCode = "AbandonedLeaseRecovered";

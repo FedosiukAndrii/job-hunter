@@ -147,6 +147,28 @@ public sealed class SourceRun : IConcurrencyTracked
         return true;
     }
 
+    public void Abandon(
+        string leaseToken,
+        DateTimeOffset now,
+        string errorCode,
+        string diagnostic)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(leaseToken);
+        if (Status != SourceRunStatus.Running
+            || !string.Equals(LeaseToken, leaseToken, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The source run lease is not active or does not match.");
+        }
+
+        Status = SourceRunStatus.Failed;
+        CompletedAtUtc = now;
+        ErrorCode = Bound(errorCode, 128);
+        Diagnostic = Bound(diagnostic, 1024);
+        LeaseToken = string.Empty;
+        LeaseExpiresAtUtc = now;
+    }
+
     private void EnsureRunningLease(string leaseToken, DateTimeOffset now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(leaseToken);

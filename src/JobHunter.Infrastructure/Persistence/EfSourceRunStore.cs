@@ -13,6 +13,31 @@ public sealed class EfSourceRunStore(IDbContextFactory<JobHunterDbContext> conte
         Guid sourceSubscriptionId,
         DateTimeOffset now,
         TimeSpan leaseDuration,
+        CancellationToken cancellationToken) =>
+        await TryStartCoreAsync(
+            sourceSubscriptionId,
+            now,
+            leaseDuration,
+            false,
+            cancellationToken);
+
+    public async Task<SourceRunLease?> TryStartImmediatelyAsync(
+        Guid sourceSubscriptionId,
+        DateTimeOffset now,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken) =>
+        await TryStartCoreAsync(
+            sourceSubscriptionId,
+            now,
+            leaseDuration,
+            true,
+            cancellationToken);
+
+    private async Task<SourceRunLease?> TryStartCoreAsync(
+        Guid sourceSubscriptionId,
+        DateTimeOffset now,
+        TimeSpan leaseDuration,
+        bool ignoreSchedule,
         CancellationToken cancellationToken)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
@@ -32,7 +57,9 @@ public sealed class EfSourceRunStore(IDbContextFactory<JobHunterDbContext> conte
         if (!subscription.IsEnabled
             || subscription.Status is SourceSubscriptionStatus.Disabled
                 or SourceSubscriptionStatus.Blocked
-            || (subscription.Status == SourceSubscriptionStatus.BackingOff
+            || (!ignoreSchedule && subscription.NextDueAtUtc > now)
+            || (!ignoreSchedule
+                && subscription.Status == SourceSubscriptionStatus.BackingOff
                 && subscription.BackoffUntilUtc > now))
         {
             return null;
@@ -185,6 +212,39 @@ public sealed class EfSourceRunStore(IDbContextFactory<JobHunterDbContext> conte
 
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<bool> TryAbandonAsync(
+        Guid sourceRunId,
+        string leaseToken,
+        DateTimeOffset now,
+        string errorCode,
+        string diagnostic,
+        CancellationToken cancellationToken)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        var run = await context.SourceRuns.SingleOrDefaultAsync(
+            candidate => candidate.Id == sourceRunId,
+            cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Source run '{sourceRunId}' does not exist.");
+        if (run.Status != SourceRunStatus.Running
+            || !string.Equals(run.LeaseToken, leaseToken, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var subscription = await context.SourceSubscriptions.SingleAsync(
+            candidate => candidate.Id == run.SourceSubscriptionId,
+            cancellationToken);
+        run.Abandon(leaseToken, now, errorCode, diagnostic);
+        subscription.RecoverAfterAbandonedRun(now);
+        await context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task<int> RecoverExpiredAsync(
