@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\JobHunter.AI.Abstractions\JobHunter.AI.Abstractions.csproj" />
+    <ProjectReference Include="..\JobHunter.Application\JobHunter.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="GitHub.Copilot.SDK" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
 </Project>

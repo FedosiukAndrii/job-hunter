@@ -12,8 +12,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\JobHunter.AI.Abstractions\JobHunter.AI.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\JobHunter.AI.Copilot\JobHunter.AI.Copilot.csproj" />
     <ProjectReference Include="..\..\src\JobHunter.JobSources.Dou\JobHunter.JobSources.Dou.csproj" />
     <ProjectReference Include="..\..\src\JobHunter.JobSources.JobSpy\JobHunter.JobSources.JobSpy.csproj" />
+    <ProjectReference Include="..\..\src\JobHunter.Notifications.Telegram\JobHunter.Notifications.Telegram.csproj" />
   </ItemGroup>
 
   <ItemGroup>
