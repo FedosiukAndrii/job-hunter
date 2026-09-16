@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <ProjectReference Include="..\JobHunter.AI.Abstractions\JobHunter.AI.Abstractions.csproj" />
     <ProjectReference Include="..\JobHunter.Domain\JobHunter.Domain.csproj" />
   </ItemGroup>
 </Project>
