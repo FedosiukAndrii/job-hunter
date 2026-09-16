@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JobHunter.Infrastructure.Persistence;
 
-public sealed class EfSourceSubscriptionStore(IDbContextFactory<JobHunterDbContext> contextFactory): ISourceSubscriptionStore
+public sealed class EfSourceSubscriptionStore(IDbContextFactory<JobHunterDbContext> contextFactory) : ISourceSubscriptionStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -15,11 +15,11 @@ public sealed class EfSourceSubscriptionStore(IDbContextFactory<JobHunterDbConte
         RespectNullableAnnotations = true
     };
 
-    public async Task SynchronizeAsync( IReadOnlyCollection<JobSourceSubscriptionDefinition> definitions, DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task SynchronizeAsync(IReadOnlyCollection<JobSourceSubscriptionDefinition> definitions, DateTimeOffset now, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(definitions);
         var duplicateDefinition = definitions
-            .GroupBy( definition => (definition.Source, definition.SubscriptionKey), SourceSubscriptionKeyComparer.Instance)
+            .GroupBy(definition => (definition.Source, definition.SubscriptionKey), SourceSubscriptionKeyComparer.Instance)
             .FirstOrDefault(group => group.Count() > 1);
 
         if (duplicateDefinition is not null)
@@ -30,29 +30,29 @@ public sealed class EfSourceSubscriptionStore(IDbContextFactory<JobHunterDbConte
         }
 
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        await using var transaction = await context.Database.BeginTransactionAsync( IsolationLevel.Serializable, cancellationToken);
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var existingSubscriptions = await context.SourceSubscriptions.ToListAsync(cancellationToken);
 
         foreach (var definition in definitions)
         {
-            var configurationJson = JsonSerializer.Serialize(new StoredSourceSubscriptionConfiguration( definition.Endpoint.AbsoluteUri, definition.QueryId, definition.MaximumItems),JsonOptions);
-            var subscription = existingSubscriptions.SingleOrDefault( candidate => candidate.Source == definition.Source && string.Equals(candidate.SubscriptionKey, definition.SubscriptionKey, StringComparison.Ordinal));
-            
+            var configurationJson = JsonSerializer.Serialize(new StoredSourceSubscriptionConfiguration(definition.Endpoint.AbsoluteUri, definition.QueryId, definition.MaximumItems), JsonOptions);
+            var subscription = existingSubscriptions.SingleOrDefault(candidate => candidate.Source == definition.Source && string.Equals(candidate.SubscriptionKey, definition.SubscriptionKey, StringComparison.Ordinal));
+
             if (subscription is null)
             {
-                subscription = SourceSubscription.Create( definition.Source, definition.SubscriptionKey, configurationJson, definition.Interval, definition.Enabled, now);
+                subscription = SourceSubscription.Create(definition.Source, definition.SubscriptionKey, configurationJson, definition.Interval, definition.Enabled, now);
                 context.SourceSubscriptions.Add(subscription);
                 existingSubscriptions.Add(subscription);
             }
             else
-                subscription.SynchronizeConfiguration( configurationJson, definition.Interval, definition.Enabled, now);
+                subscription.SynchronizeConfiguration(configurationJson, definition.Interval, definition.Enabled, now);
         }
 
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<DueJobSourceSubscription>> GetDueAsync( DateTimeOffset now, int maximumCount, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<DueJobSourceSubscription>> GetDueAsync(DateTimeOffset now, int maximumCount, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumCount, 1);
 
@@ -105,11 +105,11 @@ public sealed class EfSourceSubscriptionStore(IDbContextFactory<JobHunterDbConte
             .ToListAsync(cancellationToken);
 
         return subscriptions
-            .Select(sub => new PersistedSourceSubscriptionState( sub.Source, sub.SubscriptionKey, sub.IsEnabled, sub.Status, sub.StatusReasonCode, sub.StatusDiagnostic))
+            .Select(sub => new PersistedSourceSubscriptionState(sub.Source, sub.SubscriptionKey, sub.IsEnabled, sub.Status, sub.StatusReasonCode, sub.StatusDiagnostic))
             .ToArray();
     }
 
-    private static bool IsDue( SourceSubscription subscription, DateTimeOffset now) =>
+    private static bool IsDue(SourceSubscription subscription, DateTimeOffset now) =>
         subscription.NextDueAtUtc <= now
         && (subscription.Status == SourceSubscriptionStatus.Enabled || subscription.Status == SourceSubscriptionStatus.BackingOff && subscription.BackoffUntilUtc <= now);
 
@@ -118,11 +118,11 @@ public sealed class EfSourceSubscriptionStore(IDbContextFactory<JobHunterDbConte
         StoredSourceSubscriptionConfiguration configuration;
         try
         {
-            configuration = JsonSerializer.Deserialize<StoredSourceSubscriptionConfiguration> ( subscription.ConfigurationJson, JsonOptions) ?? throw new JsonException("The subscription configuration is empty.");
+            configuration = JsonSerializer.Deserialize<StoredSourceSubscriptionConfiguration>(subscription.ConfigurationJson, JsonOptions) ?? throw new JsonException("The subscription configuration is empty.");
         }
         catch (JsonException exception)
         {
-            throw new InvalidDataException( $"Source subscription '{subscription.Id}' has invalid persisted configuration.", exception);
+            throw new InvalidDataException($"Source subscription '{subscription.Id}' has invalid persisted configuration.", exception);
         }
 
         if (!Uri.TryCreate(configuration.Endpoint, UriKind.Absolute, out var endpoint))
