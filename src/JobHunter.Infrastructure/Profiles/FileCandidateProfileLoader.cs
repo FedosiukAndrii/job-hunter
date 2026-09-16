@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using JobHunter.Application.Profiles;
 using JobHunter.Application.Storage;
 using JobHunter.Infrastructure.Configuration;
@@ -13,7 +12,7 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace JobHunter.Infrastructure.Profiles;
 
-public sealed partial class FileCandidateProfileLoader(
+public sealed class FileCandidateProfileLoader(
     IAppDataDirectory appDataDirectory,
     IOptions<ProfileOptions> options)
     : ICandidateProfileLoader
@@ -39,7 +38,7 @@ public sealed partial class FileCandidateProfileLoader(
         var cvPath = ResolveCvPath(profilePath, profile.SupplementalCvPath);
         var redactedCv = cvPath is null
             ? null
-            : RedactContacts(
+            : SensitiveTextRedactor.Redact(
                 await ReadBoundedUtf8Async(
                     cvPath,
                     options.Value.MaximumCvBytes,
@@ -229,13 +228,6 @@ public sealed partial class FileCandidateProfileLoader(
         }
     }
 
-    private static string RedactContacts(string markdown)
-    {
-        var redacted = EmailPattern().Replace(markdown, "[redacted-email]");
-        redacted = PhonePattern().Replace(redacted, "[redacted-phone]");
-        return AddressLinePattern().Replace(redacted, "${label}[redacted-address]");
-    }
-
     private static CandidateProfileValidationException ProfileError(
         string path,
         string message,
@@ -260,20 +252,5 @@ public sealed partial class FileCandidateProfileLoader(
         jsonOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return jsonOptions;
     }
-
-    [GeneratedRegex(
-        @"(?<![\w.+-])[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}(?![\w.-])",
-        RegexOptions.CultureInvariant)]
-    private static partial Regex EmailPattern();
-
-    [GeneratedRegex(
-        @"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)",
-        RegexOptions.CultureInvariant)]
-    private static partial Regex PhonePattern();
-
-    [GeneratedRegex(
-        @"^(?<label>\s*(?:address|postal address|home address|адреса)\s*:\s*).+$",
-        RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.CultureInvariant)]
-    private static partial Regex AddressLinePattern();
 
 }

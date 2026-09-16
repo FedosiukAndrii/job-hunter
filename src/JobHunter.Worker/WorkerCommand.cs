@@ -7,6 +7,9 @@ internal enum WorkerCommandKind
     Backup,
     Restore,
     IntegrityCheck,
+    SetupTelegram,
+    Doctor,
+    RunOnce,
     Help
 }
 
@@ -14,7 +17,8 @@ internal sealed record WorkerCommand(
     WorkerCommandKind Kind,
     string[] ConfigurationArguments,
     string? InputPath = null,
-    string? OutputPath = null)
+    string? OutputPath = null,
+    string? Source = null)
 {
     public static bool TryParse(string[] args, out WorkerCommand command)
     {
@@ -39,6 +43,9 @@ internal sealed record WorkerCommand(
             "backup" => WorkerCommandKind.Backup,
             "restore" => WorkerCommandKind.Restore,
             "integrity-check" => WorkerCommandKind.IntegrityCheck,
+            "setup-telegram" => WorkerCommandKind.SetupTelegram,
+            "doctor" => WorkerCommandKind.Doctor,
+            "run-once" => WorkerCommandKind.RunOnce,
             "--help" or "-h" or "help" => WorkerCommandKind.Help,
             _ => (WorkerCommandKind?)null
         };
@@ -49,13 +56,59 @@ internal sealed record WorkerCommand(
             return false;
         }
 
-        if (kind is WorkerCommandKind.Run or WorkerCommandKind.Migrate or WorkerCommandKind.Help)
+        if (kind is WorkerCommandKind.Run
+            or WorkerCommandKind.Migrate
+            or WorkerCommandKind.SetupTelegram
+            or WorkerCommandKind.Doctor
+            or WorkerCommandKind.Help)
         {
             command = new WorkerCommand(kind.Value, args[1..]);
             return true;
         }
 
+        if (kind == WorkerCommandKind.RunOnce)
+        {
+            return TryParseRunOnceCommand(args[1..], out command);
+        }
+
         return TryParseMaintenanceCommand(kind.Value, args[1..], out command);
+    }
+
+    private static bool TryParseRunOnceCommand(
+        string[] args,
+        out WorkerCommand command)
+    {
+        string? source = null;
+        var configurationArguments = new List<string>();
+
+        for (var index = 0; index < args.Length; index++)
+        {
+            if (args[index] == "--source")
+            {
+                if (source is not null || index + 1 >= args.Length)
+                {
+                    command = null!;
+                    return false;
+                }
+
+                source = args[++index];
+                continue;
+            }
+
+            configurationArguments.Add(args[index]);
+        }
+
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            command = null!;
+            return false;
+        }
+
+        command = new WorkerCommand(
+            WorkerCommandKind.RunOnce,
+            [.. configurationArguments],
+            Source: source);
+        return true;
     }
 
     private static bool TryParseMaintenanceCommand(

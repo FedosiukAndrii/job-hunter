@@ -1,8 +1,11 @@
+using JobHunter.Application.Orchestration;
+
 namespace JobHunter.Worker;
 
 public sealed partial class Worker(
     ILogger<Worker> logger,
     TimeProvider timeProvider,
+    ScanOrchestrator scanOrchestrator,
     Microsoft.Extensions.Options.IOptions<WorkerOptions> options)
     : BackgroundService
 {
@@ -15,12 +18,42 @@ public sealed partial class Worker(
 
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken))
+            while (!stoppingToken.IsCancellationRequested)
             {
-                if (logger.IsEnabled(LogLevel.Debug))
+                try
                 {
-                    var timestampUtc = timeProvider.GetUtcNow();
-                    SchedulerTick(timestampUtc);
+                    var summary = await scanOrchestrator.RunDueAsync(stoppingToken);
+                    if (summary.DueCount > 0)
+                    {
+                        SchedulerTickCompleted(
+                            summary.DueCount,
+                            summary.StartedCount,
+                            summary.SucceededCount,
+                            summary.PartialCount,
+                            summary.BlockedCount,
+                            summary.FailedCount,
+                            summary.ObservedCount,
+                            summary.NotificationIntentCount,
+                            summary.SuppressedNotificationIntentCount,
+                            summary.AiAnalysisCount,
+                            summary.AcceptedAiAnalysisCount,
+                            summary.AiFallbackCount);
+                    }
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    SchedulerTickFailed(
+                        exception.GetType().Name,
+                        Bound(exception.Message, 512));
+                }
+
+                if (!await timer.WaitForNextTickAsync(stoppingToken))
+                {
+                    break;
                 }
             }
         }
@@ -38,13 +71,34 @@ public sealed partial class Worker(
 
     [LoggerMessage(
         EventId = 2,
-        Level = LogLevel.Debug,
-        Message = "Scheduler tick at {TimestampUtc}. Source orchestration is not enabled yet.")]
-    private partial void SchedulerTick(DateTimeOffset timestampUtc);
+        Level = LogLevel.Information,
+        Message = "Scheduler tick completed: due={DueCount}, started={StartedCount}, succeeded={SucceededCount}, partial={PartialCount}, blocked={BlockedCount}, failed={FailedCount}, observed={ObservedCount}, intents={NotificationIntentCount}, suppressedIntents={SuppressedNotificationIntentCount}, aiAnalyses={AiAnalysisCount}, acceptedAi={AcceptedAiAnalysisCount}, aiFallbacks={AiFallbackCount}.")]
+    private partial void SchedulerTickCompleted(
+        int dueCount,
+        int startedCount,
+        int succeededCount,
+        int partialCount,
+        int blockedCount,
+        int failedCount,
+        int observedCount,
+        int notificationIntentCount,
+        int suppressedNotificationIntentCount,
+        int aiAnalysisCount,
+        int acceptedAiAnalysisCount,
+        int aiFallbackCount);
 
     [LoggerMessage(
         EventId = 3,
         Level = LogLevel.Information,
         Message = "Job Hunter scheduler is stopping.")]
     private partial void SchedulerStopping();
+
+    [LoggerMessage(
+        EventId = 4,
+        Level = LogLevel.Error,
+        Message = "Scheduler tick failed with {ErrorType}: {Diagnostic}")]
+    private partial void SchedulerTickFailed(string errorType, string diagnostic);
+
+    private static string Bound(string value, int maximumLength) =>
+        value.Length <= maximumLength ? value : value[..maximumLength];
 }
