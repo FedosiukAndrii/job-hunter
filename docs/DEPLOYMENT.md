@@ -29,19 +29,24 @@ Prerequisites:
 The intended development command is:
 
 ```powershell
-dotnet run --project src/JobHunter.Worker -- run
+dotnet run --project src\JobHunter.Worker -- run --Profile:FilePath C:\JobHunterData\profile.yaml
 ```
 
-Operational modes should remain independently runnable:
+The currently implemented WP-01 through WP-05 operational commands are:
 
 ```powershell
-dotnet run --project src/JobHunter.Worker -- doctor
-dotnet run --project src/JobHunter.Worker -- run-once --source dou
-dotnet run --project src/JobHunter.Worker -- setup-telegram
+dotnet run --project src\JobHunter.Worker -- migrate
+dotnet run --project src\JobHunter.Worker -- backup --output C:\JobHunterBackups\job-hunter.db
+dotnet run --project src\JobHunter.Worker -- integrity-check
+dotnet run --project src\JobHunter.Worker -- integrity-check --input C:\JobHunterBackups\job-hunter.db
+dotnet run --project src\JobHunter.Worker -- restore --input C:\JobHunterBackups\job-hunter.db --output C:\JobHunterRestore\job-hunter.db
 ```
 
-The implementation must ensure that these commands use configured absolute paths
-and do not depend on the shell's current directory.
+Backup and restore output paths must be absolute. Restore is deliberately
+non-destructive and refuses to overwrite an existing database. `doctor`,
+`run-once`, and `setup-telegram` remain WP-09 work. Source scheduling remains
+WP-06 work, so the current `run` command initializes the database and profile
+without fetching vacancies.
 
 ## 3. Native published application
 
@@ -113,14 +118,28 @@ sidecar for core behavior.
 
 If enabled natively:
 
-1. Create a dedicated Python virtual environment outside the worker's
-   application-data directory.
-2. Install an exact locked JobSpy/FastAPI dependency set.
-3. Start the FastAPI sidecar under the same user's local process manager.
+1. Follow the exact locked setup in
+   [`services/jobspy-api/README.md`](../services/jobspy-api/README.md), keeping
+   the virtual environment outside the worker's application-data directory.
+2. Start the FastAPI sidecar under the same user's local process manager.
+3. Verify `http://127.0.0.1:8080/health` and `/version`.
 4. Bind only to loopback.
 5. Configure its URL and explicitly acknowledge the LinkedIn experimental risk.
-6. Run `doctor`; it must validate the narrow API contract and source disabled
-   state without making an aggressive scrape.
+6. Once WP-09 adds `doctor`, use it to validate the narrow API contract without
+   making an aggressive scrape.
+
+The adapter is enabled only when both settings are supplied:
+
+```powershell
+dotnet run --project src\JobHunter.Worker -- run `
+  --Profile:FilePath C:\JobHunterData\profile.yaml `
+  --Sources:LinkedInJobSpy:Enabled=true `
+  --Sources:LinkedInJobSpy:ExperimentalAcknowledged=true `
+  --Sources:LinkedInJobSpy:Endpoint=http://127.0.0.1:8080/
+```
+
+This currently validates and registers the adapter; WP-06 will invoke it from
+the scheduled pipeline.
 
 If the sidecar is unavailable, only that source is degraded. The DOU source and
 all downstream core behavior remain operational.

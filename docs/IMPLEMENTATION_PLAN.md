@@ -17,6 +17,18 @@
 8. Make native .NET execution on Windows/macOS/Linux work first. Docker Compose
    is optional and must not be a runtime prerequisite for the DOU pipeline.
 
+### Current delivery priority
+
+The JobSpy boundary spike and current WP-05 contract are feature-frozen. Until
+the core flow is usable, JobSpy changes are limited to correctness, security,
+contract compatibility, and isolation fixes; no new source capabilities or
+operator features should be added.
+
+Implementation proceeds with WP-06 and then the rules-only WP-08 path so that
+DOU discovery, deterministic scoring, durable notification intent, and mocked
+Telegram delivery work end to end. Optional AI work in WP-07 and further JobSpy
+development resume only after that core-flow acceptance path passes.
+
 ## 2. Repository layout
 
 ```text
@@ -97,6 +109,9 @@ Telegram work or introduce an unsupported credential workaround.
 
 ### WP-02: Domain model and persistence
 
+**Status:** Implemented and covered by domain, SQLite integration, migration,
+idempotency, lease-recovery, and maintenance tests.
+
 **Deliverables**
 
 - Value objects/enums for source name, native source ID, canonical URL, job key,
@@ -121,6 +136,9 @@ Telegram work or introduce an unsupported credential workaround.
 
 ### WP-03: Profile and deterministic evaluation
 
+**Status:** Implemented with candidate-profile schema version `1` and
+deterministic rubric version `rules-v1`.
+
 **Deliverables**
 
 - YAML and JSON schema for `CandidateProfile`.
@@ -141,6 +159,9 @@ Telegram work or introduce an unsupported credential workaround.
   historical result.
 
 ### WP-04: DOU adapter
+
+**Status:** Implemented at the source-adapter boundary with synthetic fixtures
+and mocked transports. Continuous scheduling belongs to WP-06.
 
 **Deliverables**
 
@@ -172,6 +193,12 @@ Telegram work or introduce an unsupported credential workaround.
 - Source failure creates observable degraded state and bounded retry.
 
 ### WP-05: JobSpy service and .NET adapter
+
+**Status:** Contract spike implemented and feature-frozen as an optional Python
+3.11 sidecar and loopback-only .NET adapter. It remains disabled by default;
+scheduling belongs to WP-06 and operator `doctor` integration belongs to WP-09.
+Only correctness, security, contract compatibility, and isolation fixes proceed
+until the DOU -> rules -> Telegram core flow passes end to end.
 
 **Python service deliverables**
 
@@ -436,11 +463,17 @@ These decisions must be made only when their relevant phase begins:
 1. Exact Copilot authentication method for native Windows/macOS after WP-00
    evidence; Compose support is secondary.
 2. AI model selection, budget, maximum analysis size, and quality threshold.
-3. Profile schema field names and default scoring values after real fixture review.
-4. Job retention duration and encrypted backup location.
-5. DOU detail-page enrichment necessity after RSS field-gap measurement.
-6. Native Windows/macOS/Linux auto-start packaging after direct-run MVP
+3. Job retention duration and encrypted backup location.
+4. Native Windows/macOS/Linux auto-start packaging after direct-run MVP
    stabilizes.
-7. Telegram inbound commands/buttons after a persistent saved/application workflow
+5. Telegram inbound commands/buttons after a persistent saved/application workflow
    exists.
-8. Ollama model and hardware support after quality/latency evaluation.
+6. Ollama model and hardware support after quality/latency evaluation.
+
+Resolved during WP-03/WP-04:
+
+- Candidate profiles use schema version `1`; the default `rules-v1` weights are
+  core skills 30, seniority 15, related stack 15, role responsibilities 15,
+  location/language 10, domain 10, and compensation 5.
+- DOU detail-page enrichment is optional and disabled by default. RSS remains
+  the primary low-rate discovery path.
