@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Date cases</title>
+    <item>
+      <title>Backend Engineer at First</title>
+      <link>https://jobs.dou.ua/vacancies/700/</link>
+      <description>&lt;p&gt;No date.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Backend Engineer at Second</title>
+      <link>https://jobs.dou.ua/vacancies/701/</link>
+      <pubDate>not-a-date</pubDate>
+      <description>&lt;p&gt;Invalid date.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

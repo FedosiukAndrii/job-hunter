@@ -1,0 +1,21 @@
+[project]
+name = "job-hunter-jobspy-api"
+version = "0.1.0"
+description = "Narrow JobSpy sidecar API for Job Hunter"
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "fastapi==0.141.1",
+    "pydantic==2.13.5",
+    "python-jobspy==1.1.82",
+    "uvicorn==0.53.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "httpx==0.28.1",
+    "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

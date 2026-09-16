@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Duplicate cases</title>
+    <item>
+      <title>.NET Engineer at Example</title>
+      <link>https://jobs.dou.ua/vacancies/800/?utm_source=one</link>
+      <guid>first-guid</guid>
+      <description>&lt;p&gt;First.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>.NET Engineer at Example</title>
+      <link>https://jobs.dou.ua/vacancies/800/?from=widget</link>
+      <guid>second-guid</guid>
+      <description>&lt;p&gt;Second duplicate.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

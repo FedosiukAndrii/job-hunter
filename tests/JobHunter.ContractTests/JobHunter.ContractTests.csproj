@@ -17,6 +17,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\Fixtures\Dou\**\*"
+          Link="Fixtures\Dou\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

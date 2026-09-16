@@ -1,5 +1,8 @@
 using JobHunter.Application.Runtime;
+using JobHunter.Application.Profiles;
 using JobHunter.Infrastructure.DependencyInjection;
+using JobHunter.JobSources.Dou.DependencyInjection;
+using JobHunter.JobSources.JobSpy.DependencyInjection;
 using JobHunter.Worker;
 using Microsoft.Extensions.Options;
 
@@ -11,13 +14,13 @@ internal static class ProgramEntry
     {
         if (!WorkerCommand.TryParse(args, out var command))
         {
-            Console.Error.WriteLine("Usage: job-hunter [run|migrate] [configuration options]");
+            PrintUsage(Console.Error);
             return 64;
         }
 
         if (command.Kind == WorkerCommandKind.Help)
         {
-            Console.WriteLine("Usage: job-hunter [run|migrate] [configuration options]");
+            PrintUsage(Console.Out);
             return 0;
         }
 
@@ -46,15 +49,25 @@ internal static class ProgramEntry
                         TimeSpan.FromSeconds(workerOptions.Value.ShutdownTimeoutSeconds));
 
         builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+        builder.Services.AddSingleton(command);
         builder.Services.AddJobHunterInfrastructure(builder.Configuration);
+        builder.Services.AddDouJobSource(builder.Configuration);
+        builder.Services.AddJobSpySource(builder.Configuration);
         builder.Services.AddHostedService<StartupInitializationService>();
 
-        if (command.Kind == WorkerCommandKind.Migrate)
+        if (command.Kind is WorkerCommandKind.Backup
+            or WorkerCommandKind.Restore
+            or WorkerCommandKind.IntegrityCheck)
+        {
+            builder.Services.AddHostedService<DatabaseMaintenanceCompletionService>();
+        }
+        else if (command.Kind == WorkerCommandKind.Migrate)
         {
             builder.Services.AddHostedService<MigrationCompletionService>();
         }
         else
         {
+            builder.Services.AddHostedService<CandidateProfileInitializationService>();
             builder.Services.AddHostedService<Worker>();
         }
 
@@ -74,5 +87,32 @@ internal static class ProgramEntry
             Console.Error.WriteLine(exception.Message);
             return 3;
         }
+        catch (IOException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 4;
+        }
+        catch (InvalidDataException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 4;
+        }
+        catch (CandidateProfileValidationException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 5;
+        }
+    }
+
+    private static void PrintUsage(TextWriter writer)
+    {
+        writer.WriteLine("Usage:");
+        writer.WriteLine("  job-hunter run [configuration options]");
+        writer.WriteLine("  job-hunter migrate [configuration options]");
+        writer.WriteLine("  job-hunter backup --output <absolute-path> [configuration options]");
+        writer.WriteLine(
+            "  job-hunter restore --input <backup-path> --output <new-database-path> [configuration options]");
+        writer.WriteLine(
+            "  job-hunter integrity-check [--input <database-path>] [configuration options]");
     }
 }

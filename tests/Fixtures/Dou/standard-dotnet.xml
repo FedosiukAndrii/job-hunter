@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <title>DOU .NET jobs</title>
+    <item>
+      <title>Senior .NET Engineer at Example</title>
+      <link>https://jobs.dou.ua/vacancies/123/?utm_source=rss&amp;search=dotnet</link>
+      <guid>https://jobs.dou.ua/vacancies/123/</guid>
+      <pubDate>Tue, 15 Sep 2026 09:30:00 +0300</pubDate>
+      <description>&lt;p&gt;Remote C# and ASP.NET Core role.&lt;/p&gt;&lt;script&gt;ignored()&lt;/script&gt;</description>
+      <category>.NET</category>
+      <category>C#</category>
+    </item>
+  </channel>
+</rss>

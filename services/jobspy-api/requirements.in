@@ -1,0 +1,4 @@
+fastapi==0.141.1
+pydantic==2.13.5
+python-jobspy==1.1.82
+uvicorn==0.53.0
