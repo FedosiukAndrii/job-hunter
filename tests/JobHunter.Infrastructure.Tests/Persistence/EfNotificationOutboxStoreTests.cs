@@ -11,6 +11,52 @@ namespace JobHunter.Infrastructure.Tests.Persistence;
 public sealed class EfNotificationOutboxStoreTests
 {
     [Fact]
+    public async Task TryLeaseNextReadsLegacyNotificationPayloadWithoutNewDisplayFields()
+    {
+        await using var host = await PersistenceTestHost.CreateAsync();
+        var now = DateTimeOffset.UnixEpoch;
+        var jobId = await AddJobAsync(host, now);
+        const string legacyPayload =
+            """
+            {
+              "title":"Senior .NET Engineer",
+              "company":"Example",
+              "locations":["Remote"],
+              "workplaceMode":1,
+              "score":90,
+              "scoreMode":"rules-only",
+              "summary":"Legacy summary.",
+              "compensationMinimum":5000,
+              "compensationMaximum":6000,
+              "compensationCurrency":"USD",
+              "compensationPeriod":2,
+              "publishedAtUtc":"1970-01-01T00:00:00+00:00",
+              "canonicalUrl":"https://jobs.dou.ua/vacancies/123456/"
+            }
+            """;
+        await using (var context = await CreateContextAsync(host))
+        {
+            context.NotificationOutbox.Add(NotificationOutbox.Create(
+                "telegram-legacy",
+                jobId,
+                1,
+                legacyPayload,
+                now));
+            await context.SaveChangesAsync();
+        }
+
+        var lease = await host.Services
+            .GetRequiredService<INotificationOutboxStore>()
+            .TryLeaseNextAsync(now, TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        Assert.NotNull(lease);
+        Assert.False(lease.Payload.UsedAi);
+        Assert.Empty(lease.Payload.Strengths);
+        Assert.Empty(lease.Payload.Concerns);
+        Assert.Empty(lease.Payload.MissingFields);
+    }
+
+    [Fact]
     public async Task EnqueueUsesDurableNotificationKey()
     {
         await using var host = await PersistenceTestHost.CreateAsync();
@@ -334,7 +380,6 @@ public sealed class EfNotificationOutboxStoreTests
                 WorkplaceMode.Remote,
                 90,
                 "rules-only",
-                "Strong match.",
                 5_000,
                 6_000,
                 "USD",

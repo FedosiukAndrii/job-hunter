@@ -18,6 +18,11 @@ public sealed class JobQualificationPolicyTests
         Assert.Equal(80, decision.Score);
         Assert.Equal("rules-and-ai", decision.ScoreMode);
         Assert.True(decision.UsedAi);
+        Assert.Equal("AI summary.", decision.AiSummary);
+        Assert.Equal(70, decision.DeterministicScore);
+        Assert.Contains("Strong .NET/backend match", decision.Strengths);
+        Assert.Contains("AWS is not stated", decision.Concerns);
+        Assert.Equal(20, decision.AiUsage?.InputTokens);
     }
 
     [Fact]
@@ -35,6 +40,8 @@ public sealed class JobQualificationPolicyTests
         Assert.Equal(73, decision.Score);
         Assert.Equal("rules-only", decision.ScoreMode);
         Assert.False(decision.UsedAi);
+        Assert.Null(decision.AiSummary);
+        Assert.Equal(20, decision.AiUsage?.InputTokens);
     }
 
     private static DeterministicEvaluation CreateDeterministic(
@@ -59,7 +66,13 @@ public sealed class JobQualificationPolicyTests
             "test-model",
             JobAnalysisSchema.Version,
             "rules-v1",
-            new JobAnalysisOutput(score, confidence, "AI summary.", []),
+            new JobAnalysisOutput(
+                score,
+                confidence,
+                "AI summary.",
+                [],
+                ["Strong .NET/backend match"],
+                ["AWS is not stated"]),
             new JobAnalysisUsage(100, 100, 20, 10, null),
             [],
             null);

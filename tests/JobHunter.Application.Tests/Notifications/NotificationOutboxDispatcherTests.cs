@@ -154,7 +154,6 @@ public sealed class NotificationOutboxDispatcherTests
                 WorkplaceMode.Remote,
                 90,
                 "rules-only",
-                "Strong fit.",
                 null,
                 null,
                 null,

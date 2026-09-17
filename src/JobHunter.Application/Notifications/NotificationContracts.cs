@@ -33,13 +33,37 @@ public sealed record JobNotification(
     WorkplaceMode WorkplaceMode,
     int Score,
     string ScoreMode,
-    string Summary,
     decimal? CompensationMinimum,
     decimal? CompensationMaximum,
     string? CompensationCurrency,
     CompensationPeriod CompensationPeriod,
     DateTimeOffset? PublishedAtUtc,
-    string CanonicalUrl);
+    string CanonicalUrl)
+{
+    public bool UsedAi { get; init; }
+
+    public string? AiSummary { get; init; }
+
+    public IReadOnlyList<string> Strengths { get; init; } = [];
+
+    public IReadOnlyList<string> Concerns { get; init; } = [];
+
+    public int? DeterministicScore { get; init; }
+
+    public bool? PassedHardFilters { get; init; }
+
+    public string? StrongestCriterion { get; init; }
+
+    public IReadOnlyList<string> MissingFields { get; init; } = [];
+
+    public long? AiInputTokens { get; init; }
+
+    public long? AiOutputTokens { get; init; }
+
+    public double? AiCredits { get; init; }
+
+    public int AiRequestCount { get; init; }
+}
 
 public sealed record NotificationIntent(
     string DestinationId,

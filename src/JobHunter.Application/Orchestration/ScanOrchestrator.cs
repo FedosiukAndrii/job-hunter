@@ -10,7 +10,7 @@ namespace JobHunter.Application.Orchestration;
 
 public sealed class ScanOrchestrator : IDisposable
 {
-    public const int NotificationVersion = 1;
+    public const int NotificationVersion = 2;
 
     private readonly Dictionary<SourceName, IJobSource> _sources;
     private readonly IReadOnlyList<IJobSourceSubscriptionProvider> _subscriptionProviders;
@@ -597,13 +597,26 @@ public sealed class ScanOrchestrator : IDisposable
                 job.Record.WorkplaceMode,
                 decision.Score,
                 decision.ScoreMode,
-                decision.Summary,
                 job.Record.CompensationMinimum,
                 job.Record.CompensationMaximum,
                 job.Record.CompensationCurrency,
                 job.Record.CompensationPeriod,
                 job.Record.PublishedAtUtc,
-                job.Record.CanonicalUrl.ToString()));
+                job.Record.CanonicalUrl.ToString())
+            {
+                UsedAi = decision.UsedAi,
+                AiSummary = decision.AiSummary,
+                Strengths = decision.Strengths,
+                Concerns = decision.Concerns,
+                DeterministicScore = decision.DeterministicScore,
+                PassedHardFilters = decision.PassedHardFilters,
+                StrongestCriterion = decision.StrongestCriterion,
+                MissingFields = decision.MissingFields,
+                AiInputTokens = decision.AiUsage?.InputTokens,
+                AiOutputTokens = decision.AiUsage?.OutputTokens,
+                AiCredits = decision.AiUsage?.AiCredits,
+                AiRequestCount = decision.AiUsage?.RequestCount ?? 0
+            });
 }
 
 public sealed class ScanOrchestratorOptions
