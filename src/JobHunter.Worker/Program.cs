@@ -36,6 +36,7 @@ internal static class ProgramEntry
                 Args = command.ConfigurationArguments,
                 ContentRootPath = AppContext.BaseDirectory
             });
+        ConfigureLogging(builder.Logging);
         builder.Services
             .AddOptions<WorkerOptions>()
             .Bind(builder.Configuration.GetSection(WorkerOptions.SectionName))
@@ -141,6 +142,7 @@ internal static class ProgramEntry
         }
         else if (command.Kind == WorkerCommandKind.RunOnce)
         {
+            builder.Services.AddHostedService<CopilotAvailabilityValidationService>();
             builder.Services.AddHostedService<RunOnceCompletionService>();
         }
         else if (command.Kind == WorkerCommandKind.Doctor)
@@ -149,6 +151,7 @@ internal static class ProgramEntry
         }
         else
         {
+            builder.Services.AddHostedService<CopilotAvailabilityValidationService>();
             builder.Services.AddHostedService<CandidateProfileInitializationService>();
             builder.Services.AddHostedService<Worker>();
             if (builder.Configuration.GetValue<bool>("Retention:Enabled"))
@@ -202,6 +205,22 @@ internal static class ProgramEntry
             Console.Error.WriteLine(exception.Message);
             return 7;
         }
+        catch (CopilotModelAvailabilityException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 8;
+        }
+    }
+
+    internal static void ConfigureLogging(ILoggingBuilder logging)
+    {
+        ArgumentNullException.ThrowIfNull(logging);
+
+        // The foreground worker must report source and operator failures through
+        // its process output. The default Windows Event Log provider can itself
+        // fail for a standard, non-elevated user and hide the original error.
+        logging.ClearProviders();
+        logging.AddSimpleConsole(options => options.SingleLine = true);
     }
 
     private static void PrintUsage(TextWriter writer)
