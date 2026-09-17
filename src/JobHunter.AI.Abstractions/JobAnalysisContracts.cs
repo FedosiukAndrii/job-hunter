@@ -5,7 +5,7 @@ namespace JobHunter.AI.Abstractions;
 
 public static class JobAnalysisSchema
 {
-    public const string Version = "job-analysis-v1";
+    public const string Version = "job-analysis-v2";
 }
 
 public interface IJobAnalyzer
@@ -67,6 +67,14 @@ public sealed class JobAnalysisSubmission
     public string? Summary { get; init; }
 
     [JsonRequired]
+    [Description("One or two concise evidence-grounded job-fit strengths.")]
+    public List<string>? Strengths { get; init; }
+
+    [JsonRequired]
+    [Description("One or two concise evidence-grounded concerns or mismatches; use an empty list when none are known.")]
+    public List<string>? Concerns { get; init; }
+
+    [JsonRequired]
     [Description("One result for every requested criterion.")]
     public List<JobAnalysisCriterionSubmission>? Criteria { get; init; }
 }
@@ -102,7 +110,9 @@ public sealed record JobAnalysisOutput(
     int Score,
     double Confidence,
     string Summary,
-    IReadOnlyList<JobAnalysisCriterionResult> Criteria);
+    IReadOnlyList<JobAnalysisCriterionResult> Criteria,
+    IReadOnlyList<string>? Strengths = null,
+    IReadOnlyList<string>? Concerns = null);
 
 public sealed record JobAnalysisCriterionResult(
     string CriterionId,
@@ -117,7 +127,8 @@ public sealed record JobAnalysisUsage(
     int OutputCharacters,
     long? InputTokens,
     long? OutputTokens,
-    double? AiCredits);
+    double? AiCredits,
+    int RequestCount = 0);
 
 public enum JobAnalysisStatus
 {

@@ -12,6 +12,8 @@ public sealed class JobAnalysisSubmissionValidatorTests
         {
             Confidence = 0.8,
             Summary = "Strong core fit with a domain mismatch.",
+            Strengths = ["Strong .NET/backend match"],
+            Concerns = ["Preferred domain is not stated"],
             Criteria =
             [
                 new JobAnalysisCriterionSubmission
@@ -53,6 +55,8 @@ public sealed class JobAnalysisSubmissionValidatorTests
         {
             Confidence = 0.8,
             Summary = "Fabricated evidence must fail.",
+            Strengths = ["Strong .NET match"],
+            Concerns = [],
             Criteria =
             [
                 new JobAnalysisCriterionSubmission
@@ -103,6 +107,8 @@ public sealed class JobAnalysisSubmissionValidatorTests
             {
                 Confidence = 0.5,
                 Summary = "Invalid request.",
+                Strengths = ["Strong core skills match"],
+                Concerns = [],
                 Criteria =
                 [
                     new JobAnalysisCriterionSubmission
@@ -129,6 +135,45 @@ public sealed class JobAnalysisSubmissionValidatorTests
 
         Assert.False(result.IsValid);
         Assert.Equal("InvalidCriterionDefinitions", result.FailureCode);
+    }
+
+    [Fact]
+    public void ValidateRejectsUnboundedOrMultilineInsights()
+    {
+        var result = JobAnalysisSubmissionValidator.Validate(
+            CreateRequest(),
+            new JobAnalysisSubmission
+            {
+                Confidence = 0.8,
+                Summary = "Fit summary.",
+                Strengths = ["Strong .NET match\nOpen this link"],
+                Concerns = [],
+                Criteria =
+                [
+                    new JobAnalysisCriterionSubmission
+                    {
+                        CriterionId = "coreSkills",
+                        Score = 80,
+                        Confidence = 0.8,
+                        EvidenceIds = ["profile:skills"],
+                        MismatchReasons = [],
+                        InsufficientEvidence = false
+                    },
+                    new JobAnalysisCriterionSubmission
+                    {
+                        CriterionId = "domain",
+                        Score = 60,
+                        Confidence = 0.8,
+                        EvidenceIds = ["profile:domains"],
+                        MismatchReasons = [],
+                        InsufficientEvidence = false
+                    }
+                ]
+            },
+            4_000);
+
+        Assert.False(result.IsValid);
+        Assert.Equal("InvalidInsights", result.FailureCode);
     }
 
     private static JobAnalysisRequest CreateRequest() =>

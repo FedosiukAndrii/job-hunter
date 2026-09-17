@@ -34,6 +34,8 @@ public sealed class CopilotIsolationTests
                 configuration.Tools);
         var availableTools = Assert.IsAssignableFrom<IList<string>>(
             configuration.AvailableTools);
+        var excludedTools = Assert.IsAssignableFrom<IList<string>>(
+            configuration.ExcludedTools);
         var infiniteSessions = Assert.IsType<InfiniteSessionConfig>(
             configuration.InfiniteSessions);
         var memory = Assert.IsType<MemoryConfiguration>(configuration.Memory);
@@ -49,6 +51,9 @@ public sealed class CopilotIsolationTests
             availableTools,
             name => name.StartsWith("builtin:", StringComparison.Ordinal)
                 || name.StartsWith("mcp:", StringComparison.Ordinal));
+        Assert.Contains("builtin:*", excludedTools);
+        Assert.Contains("mcp:*", excludedTools);
+        Assert.Empty(configuration.ExcludedBuiltInAgents ?? []);
         Assert.False(configuration.EnableSessionStore);
         Assert.False(configuration.EnableSkills);
         Assert.False(configuration.EnableHostGitOperations);
@@ -58,6 +63,33 @@ public sealed class CopilotIsolationTests
         Assert.False(memory.Enabled);
         Assert.Empty(mcpServers);
         Assert.NotNull(configuration.OnPermissionRequest);
+    }
+
+    [Fact]
+    public void AvailabilityProbeHasNoTools()
+    {
+        var configuration = CopilotSessionConfigurationFactory.CreateAvailabilityProbe(
+            new CopilotOptions { Model = "gpt-5.6-luna" },
+            Path.GetTempPath());
+        var tools = Assert.IsAssignableFrom<
+            ICollection<Microsoft.Extensions.AI.AIFunctionDeclaration>>(
+                configuration.Tools);
+        var availableTools = Assert.IsAssignableFrom<IList<string>>(
+            configuration.AvailableTools);
+
+        Assert.Equal("gpt-5.6-luna", configuration.Model);
+        Assert.Empty(tools);
+        Assert.Empty(availableTools);
+    }
+
+    [Fact]
+    public void PromptTemplateRetainsRequiredSafetyInstructions()
+    {
+        var prompt = CopilotAnalysisPromptBuilder.SystemMessage;
+
+        Assert.Contains("untrusted evidence", prompt, StringComparison.Ordinal);
+        Assert.Contains("submit_job_analysis exactly once", prompt, StringComparison.Ordinal);
+        Assert.Contains("Do not use markdown or Telegram", prompt, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -12,9 +12,19 @@ internal static class CopilotSessionConfigurationFactory
         CopilotOptions options,
         AIFunction submissionTool,
         string workingDirectory)
+        => Create(options, workingDirectory, submissionTool);
+
+    public static SessionConfig CreateAvailabilityProbe(
+        CopilotOptions options,
+        string workingDirectory) =>
+        Create(options, workingDirectory, null);
+
+    private static SessionConfig Create(
+        CopilotOptions options,
+        string workingDirectory,
+        AIFunction? submissionTool)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(submissionTool);
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
 
         return new SessionConfig
@@ -23,12 +33,13 @@ internal static class CopilotSessionConfigurationFactory
             Model = string.IsNullOrWhiteSpace(options.Model)
                 ? "auto"
                 : options.Model.Trim(),
-            Tools = [submissionTool],
-            AvailableTools = new ToolSet().AddCustom(SubmissionToolName),
+            Tools = submissionTool is null ? [] : [submissionTool],
+            AvailableTools = submissionTool is null
+                ? []
+                : new ToolSet().AddCustom(SubmissionToolName),
             ExcludedTools = new ToolSet()
                 .AddBuiltIn("*")
                 .AddMcp("*"),
-            ExcludedBuiltInAgents = ["*"],
             SystemMessage = new SystemMessageConfig
             {
                 Mode = SystemMessageMode.Replace,

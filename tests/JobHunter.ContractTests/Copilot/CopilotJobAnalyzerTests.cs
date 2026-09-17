@@ -78,6 +78,53 @@ public sealed class CopilotJobAnalyzerTests
         await Task.WhenAll(first, second);
     }
 
+    [Fact]
+    public async Task AnalyzeRetriesOnceWithCorrectivePromptAfterInvalidStructuredOutput()
+    {
+        var prompts = new List<string>();
+        var runner = new StubSessionRunner(
+            (_, prompt, _) =>
+            {
+                prompts.Add(prompt);
+                return Task.FromResult(
+                    prompts.Count == 1
+                        ? CopilotRunOutcome.Failure(
+                            JobAnalysisStatus.InvalidOutput,
+                            "InvalidCriterionScore",
+                            "fixture-model",
+                            100,
+                            20,
+                            50,
+                            0.01)
+                        : new CopilotRunOutcome(
+                            JobAnalysisStatus.Succeeded,
+                            new JobAnalysisOutput(82, 0.8, "Strong fit.", []),
+                            "fixture-model",
+                            120,
+                            30,
+                            60,
+                            null,
+                            0.02));
+            });
+        using var analyzer = CreateAnalyzer(runner);
+
+        var result = await analyzer.AnalyzeAsync(
+            CreateRequest(),
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(2, prompts.Count);
+        Assert.Contains(
+            "Every criteria[].score must be a whole integer from 0 through 100",
+            prompts[1],
+            StringComparison.Ordinal);
+        Assert.Equal(220, result.Usage.InputTokens);
+        Assert.Equal(50, result.Usage.OutputTokens);
+        Assert.Equal(110, result.Usage.OutputCharacters);
+        Assert.Equal(0.03, result.Usage.AiCredits);
+        Assert.Equal(2, result.Usage.RequestCount);
+    }
+
     private static CopilotJobAnalyzer CreateAnalyzer(
         ICopilotSessionRunner runner,
         CopilotOptions? options = null) =>

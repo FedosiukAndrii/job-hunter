@@ -30,9 +30,16 @@ public static class JobAnalysisSubmissionValidator
         }
 
         if (string.IsNullOrWhiteSpace(submission.Summary)
-            || submission.Summary.Trim().Length > 1024)
+            || submission.Summary.Trim().Length > 420
+            || ContainsLineBreak(submission.Summary))
         {
             return JobAnalysisValidationResult.Invalid("InvalidSummary");
+        }
+
+        if (!TryValidateInsights(submission.Strengths, out var strengths)
+            || !TryValidateInsights(submission.Concerns, out var concerns))
+        {
+            return JobAnalysisValidationResult.Invalid("InvalidInsights");
         }
 
         if (submission.Criteria is null
@@ -149,8 +156,36 @@ public static class JobAnalysisSubmissionValidator
                 score,
                 submission.Confidence.Value,
                 submission.Summary.Trim(),
-                validatedCriteria));
+                validatedCriteria,
+                strengths,
+                concerns));
     }
+
+    private static bool TryValidateInsights(
+        List<string>? submitted,
+        out IReadOnlyList<string> insights)
+    {
+        insights = [];
+        if (submitted is null
+            || submitted.Count > 2
+            || submitted.Any(
+                insight => string.IsNullOrWhiteSpace(insight)
+                    || insight.Trim().Length > 180
+                    || ContainsLineBreak(insight))
+            || submitted
+                .Select(insight => insight.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .Count() != submitted.Count)
+        {
+            return false;
+        }
+
+        insights = submitted.Select(insight => insight.Trim()).ToArray();
+        return true;
+    }
+
+    private static bool ContainsLineBreak(string value) =>
+        value.IndexOfAny(['\r', '\n']) >= 0;
 }
 
 public sealed record JobAnalysisValidationResult(

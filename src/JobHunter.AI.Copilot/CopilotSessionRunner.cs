@@ -7,6 +7,7 @@ using JobHunter.AI.Copilot.Configuration;
 using JobHunter.Application.Security;
 using JobHunter.Application.Storage;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace JobHunter.AI.Copilot;
@@ -22,10 +23,11 @@ internal interface ICopilotSessionRunner
         CancellationToken cancellationToken);
 }
 
-internal sealed class CopilotSessionRunner(
+internal sealed partial class CopilotSessionRunner(
     IAppDataDirectory appDataDirectory,
     ISecretReader secretReader,
-    IOptions<CopilotOptions> options)
+    IOptions<CopilotOptions> options,
+    ILogger<CopilotSessionRunner> logger)
     : ICopilotSessionRunner
 {
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(10);
@@ -34,41 +36,174 @@ internal sealed class CopilotSessionRunner(
         CancellationToken cancellationToken)
     {
         var configuredOptions = options.Value;
-        var clientOptions = CreateClientOptions(out _);
-
-        await using var client = new CopilotClient(clientOptions);
-        await client.StartAsync(cancellationToken);
-        var auth = await client.GetAuthStatusAsync(cancellationToken);
-        if (!auth.IsAuthenticated)
-        {
-            return new CopilotAvailabilityOutcome(
-                false,
-                "CopilotAuthenticationUnavailable",
-                null);
-        }
-
-        var models = await client.ListModelsAsync(cancellationToken);
         var configuredModel = string.IsNullOrWhiteSpace(configuredOptions.Model)
             ? "auto"
             : configuredOptions.Model.Trim();
-        if (!string.Equals(configuredModel, "auto", StringComparison.OrdinalIgnoreCase)
-            && !models.Any(
-                model => string.Equals(
-                    model.Id,
-                    configuredModel,
-                    StringComparison.OrdinalIgnoreCase)))
+
+        try
         {
+            var clientOptions = CreateClientOptions(out var workingDirectory);
+
+            await using var client = new CopilotClient(clientOptions);
+            await client.StartAsync(cancellationToken);
+            var auth = await client.GetAuthStatusAsync(cancellationToken);
+            if (!auth.IsAuthenticated)
+            {
+                return new CopilotAvailabilityOutcome(
+                    false,
+                    "CopilotAuthenticationUnavailable",
+                    configuredModel);
+            }
+
+            var models = await client.ListModelsAsync(cancellationToken);
+            if (models.Count == 0)
+            {
+                return new CopilotAvailabilityOutcome(
+                    false,
+                    "CopilotModelsUnavailable",
+                    configuredModel);
+            }
+
+            if (!string.Equals(configuredModel, "auto", StringComparison.OrdinalIgnoreCase)
+                && !models.Any(
+                    model => string.Equals(
+                        model.Id,
+                        configuredModel,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                if (HasAutoOnlyCatalog(models))
+                {
+                    ModelCatalogIsLimitedToAuto(configuredModel);
+                }
+                else
+                {
+                    ModelNotPresentInCatalog(
+                        configuredModel,
+                        models.Count,
+                        DescribeModelIds(models));
+                    return new CopilotAvailabilityOutcome(
+                        false,
+                        "CopilotModelUnavailable",
+                        configuredModel);
+                }
+            }
+
+            return await ProbeModelSessionAsync(
+                client,
+                configuredOptions,
+                configuredModel,
+                workingDirectory,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            AvailabilityCheckFailed(configuredModel, exception.GetType().Name);
             return new CopilotAvailabilityOutcome(
                 false,
-                "CopilotModelUnavailable",
+                "CopilotAvailabilityCheckFailed",
+                configuredModel);
+        }
+    }
+
+    private async Task<CopilotAvailabilityOutcome> ProbeModelSessionAsync(
+        CopilotClient client,
+        CopilotOptions configuredOptions,
+        string configuredModel,
+        string workingDirectory,
+        CancellationToken cancellationToken)
+    {
+        CopilotSession session;
+        try
+        {
+            session = await client.CreateSessionAsync(
+                CopilotSessionConfigurationFactory.CreateAvailabilityProbe(
+                    configuredOptions,
+                    workingDirectory),
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ModelSessionProbeFailed(configuredModel, exception.GetType().Name);
+            return new CopilotAvailabilityOutcome(
+                false,
+                "CopilotModelAvailabilityProbeFailed",
                 configuredModel);
         }
 
-        return new CopilotAvailabilityOutcome(
-            models.Count > 0,
-            models.Count > 0 ? "Ready" : "CopilotModelsUnavailable",
-            configuredModel);
+        var cleanupSucceeded = await DisposeSessionAsync(session);
+        cleanupSucceeded = await DeleteSessionAsync(client, session.SessionId)
+            && cleanupSucceeded;
+        if (!cleanupSucceeded)
+        {
+            ModelSessionProbeCleanupFailed(configuredModel);
+            return new CopilotAvailabilityOutcome(
+                false,
+                "CopilotModelAvailabilityProbeCleanupFailed",
+                configuredModel);
+        }
+
+        return new CopilotAvailabilityOutcome(true, "Ready", configuredModel);
     }
+
+    private static bool HasAutoOnlyCatalog(IList<ModelInfo> models) =>
+        models.Count == 1
+        && string.Equals(models[0].Id, "auto", StringComparison.OrdinalIgnoreCase);
+
+    private static string DescribeModelIds(IList<ModelInfo> models) =>
+        string.Join(
+            ",",
+            models
+                .Select(model => model.Id)
+                .Where(modelId => !string.IsNullOrWhiteSpace(modelId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .Take(32)
+                .Select(modelId => modelId!.Length <= 96 ? modelId : modelId[..96]));
+
+    [LoggerMessage(
+        EventId = 1,
+        Level = LogLevel.Warning,
+        Message = "Configured Copilot model {ConfiguredModel} was not found in the SDK catalog: count={ModelCount}, ids={ModelIds}.")]
+    private partial void ModelNotPresentInCatalog(
+        string configuredModel,
+        int modelCount,
+        string modelIds);
+
+    [LoggerMessage(
+        EventId = 2,
+        Level = LogLevel.Warning,
+        Message = "Copilot SDK catalog only exposed auto; validating configured model {ConfiguredModel} by creating a restricted session.")]
+    private partial void ModelCatalogIsLimitedToAuto(string configuredModel);
+
+    [LoggerMessage(
+        EventId = 3,
+        Level = LogLevel.Warning,
+        Message = "Copilot availability check failed for model {ConfiguredModel} with {ExceptionType}.")]
+    private partial void AvailabilityCheckFailed(
+        string configuredModel,
+        string exceptionType);
+
+    [LoggerMessage(
+        EventId = 4,
+        Level = LogLevel.Warning,
+        Message = "Copilot model availability probe failed for model {ConfiguredModel} with {ExceptionType}.")]
+    private partial void ModelSessionProbeFailed(
+        string configuredModel,
+        string exceptionType);
+
+    [LoggerMessage(
+        EventId = 5,
+        Level = LogLevel.Warning,
+        Message = "Copilot model availability probe cleanup failed for model {ConfiguredModel}.")]
+    private partial void ModelSessionProbeCleanupFailed(string configuredModel);
 
     public async Task<CopilotRunOutcome> RunAsync(
         JobAnalysisRequest request,
@@ -185,9 +320,13 @@ internal sealed class CopilotSessionRunner(
         return new CopilotClientOptions
         {
             Mode = CopilotClientMode.Empty,
+            Connection = RuntimeConnection.ForStdio(),
             BaseDirectory = baseDirectory,
             WorkingDirectory = workingDirectory,
-            LogLevel = CopilotLogLevel.None,
+            LogLevel = logger.IsEnabled(LogLevel.Debug)
+                ? CopilotLogLevel.Debug
+                : CopilotLogLevel.None,
+            Logger = logger,
             GitHubToken = token,
             UseLoggedInUser = token is null
         };
@@ -234,7 +373,13 @@ internal sealed class CopilotSessionRunner(
 
     private static AIFunction CreateSubmissionTool(SubmissionCapture capture) =>
         CopilotTool.DefineTool(
-            (Func<double, string, List<JobAnalysisCriterionSubmission>, Task<object>>)
+            (Func<
+                double,
+                string,
+                List<string>,
+                List<string>,
+                List<JobAnalysisCriterionSubmission>,
+                Task<object>>)
                 capture.SubmitAsync,
             new CopilotToolOptions
             {
@@ -264,7 +409,8 @@ internal sealed class CopilotSessionRunner(
                 usage.InputTokens,
                 usage.OutputTokens,
                 submission.OutputCharacters,
-                null);
+                null,
+                usage.AiCredits);
         }
 
         if (submission.Validation is not null)
@@ -275,7 +421,8 @@ internal sealed class CopilotSessionRunner(
                 usage.Model ?? assistantModel,
                 usage.InputTokens,
                 usage.OutputTokens,
-                submission.OutputCharacters);
+                submission.OutputCharacters,
+                usage.AiCredits);
         }
 
         if (error.StatusCode == 429)
@@ -285,7 +432,8 @@ internal sealed class CopilotSessionRunner(
                 "CopilotRateLimited",
                 usage.Model ?? assistantModel,
                 usage.InputTokens,
-                usage.OutputTokens);
+                usage.OutputTokens,
+                aiCredits: usage.AiCredits);
         }
 
         if (error.StatusCode is 401 or 403)
@@ -295,7 +443,8 @@ internal sealed class CopilotSessionRunner(
                 "CopilotAccessDenied",
                 usage.Model ?? assistantModel,
                 usage.InputTokens,
-                usage.OutputTokens);
+                usage.OutputTokens,
+                aiCredits: usage.AiCredits);
         }
 
         if (error.HasError)
@@ -307,7 +456,8 @@ internal sealed class CopilotSessionRunner(
                 error.ErrorCode ?? "CopilotSessionError",
                 usage.Model ?? assistantModel,
                 usage.InputTokens,
-                usage.OutputTokens);
+                usage.OutputTokens,
+                aiCredits: usage.AiCredits);
         }
 
         return CopilotRunOutcome.Failure(
@@ -315,7 +465,8 @@ internal sealed class CopilotSessionRunner(
             "MissingStructuredOutput",
             usage.Model ?? assistantModel,
             usage.InputTokens,
-            usage.OutputTokens);
+            usage.OutputTokens,
+            aiCredits: usage.AiCredits);
     }
 
     private static async Task<bool> DeleteSessionAsync(
@@ -357,6 +508,10 @@ internal sealed class CopilotSessionRunner(
         public Task<object> SubmitAsync(
             [Description("Overall confidence from 0 through 1.")] double confidence,
             [Description("Concise evidence-grounded fit summary.")] string summary,
+            [Description("One or two concise evidence-grounded job-fit strengths.")]
+            List<string> strengths,
+            [Description("One or two concise evidence-grounded concerns or mismatches; use an empty list when none are known.")]
+            List<string> concerns,
             [Description("One result for every requested criterion.")]
             List<JobAnalysisCriterionSubmission> criteria)
         {
@@ -364,6 +519,8 @@ internal sealed class CopilotSessionRunner(
             {
                 Confidence = confidence,
                 Summary = summary,
+                Strengths = strengths,
+                Concerns = concerns,
                 Criteria = criteria
             };
             var outputCharacters = JsonSerializer.Serialize(value).Length;
@@ -400,18 +557,29 @@ internal sealed class CopilotSessionRunner(
 
         public string? Model { get; private set; }
 
+        public double? AiCredits { get; private set; }
+
         public void Capture(AssistantUsageEvent usageEvent)
         {
             lock (_sync)
             {
                 InputTokens = Add(InputTokens, usageEvent.Data.InputTokens);
                 OutputTokens = Add(OutputTokens, usageEvent.Data.OutputTokens);
+                AiCredits = Add(
+                    AiCredits,
+                    ToAiCredits(usageEvent.Data.CopilotUsage?.TotalNanoAiu));
                 Model = usageEvent.Data.Model ?? Model;
             }
         }
 
         private static long? Add(long? current, long? value) =>
             value is null ? current : (current ?? 0) + value.Value;
+
+        private static double? Add(double? current, double? value) =>
+            value is null ? current : (current ?? 0) + value.Value;
+
+        private static double? ToAiCredits(double? totalNanoAiu) =>
+            totalNanoAiu is null ? null : totalNanoAiu.Value / 1_000_000_000d;
     }
 
     private sealed class ErrorCapture
@@ -463,7 +631,8 @@ internal sealed record CopilotRunOutcome(
     long? InputTokens,
     long? OutputTokens,
     int OutputCharacters,
-    string? FailureCode)
+    string? FailureCode,
+    double? AiCredits = null)
 {
     public static CopilotRunOutcome Failure(
         JobAnalysisStatus status,
@@ -471,7 +640,8 @@ internal sealed record CopilotRunOutcome(
         string? model = null,
         long? inputTokens = null,
         long? outputTokens = null,
-        int outputCharacters = 0) =>
+        int outputCharacters = 0,
+        double? aiCredits = null) =>
         new(
             status,
             null,
@@ -479,5 +649,6 @@ internal sealed record CopilotRunOutcome(
             inputTokens,
             outputTokens,
             outputCharacters,
-            failureCode);
+            failureCode,
+            aiCredits);
 }

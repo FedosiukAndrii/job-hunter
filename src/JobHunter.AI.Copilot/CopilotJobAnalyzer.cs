@@ -112,30 +112,37 @@ public sealed class CopilotJobAnalyzer : IJobAnalyzer, IDisposable
 
         deadlineCancellation.CancelAfter(remaining);
         var enteredExecution = false;
+        var usage = new UsageAccumulator();
         try
         {
             await _executionGate.WaitAsync(deadlineCancellation.Token);
             enteredExecution = true;
             _queueSlots.Release();
 
-            for (var attempt = 0; ; attempt++)
+            var promptForAttempt = prompt;
+            var transientRetryCount = 0;
+            var retriedInvalidOutput = false;
+            for (; ; )
             {
                 CopilotRunOutcome outcome;
                 try
                 {
                     outcome = await _sessionRunner.RunAsync(
                         request,
-                        prompt,
+                        promptForAttempt,
                         deadlineCancellation.Token);
                 }
                 catch (OperationCanceledException)
                     when (!cancellationToken.IsCancellationRequested)
                 {
-                    return Failure(
-                        request,
+                    var timedOut = CopilotRunOutcome.Failure(
                         JobAnalysisStatus.TimedOut,
-                        "AnalysisDeadlineExceeded",
-                        prompt.Length);
+                        "AnalysisDeadlineExceeded");
+                    usage.Add(promptForAttempt.Length, timedOut);
+                    return ToResult(
+                        request,
+                        usage,
+                        timedOut);
                 }
                 catch (IOException)
                 {
@@ -150,22 +157,55 @@ public sealed class CopilotJobAnalyzer : IJobAnalyzer, IDisposable
                         "CopilotRuntimeFailure");
                 }
 
+                usage.Add(promptForAttempt.Length, outcome);
+
                 if (outcome.Status == JobAnalysisStatus.TransientFailure
-                    && attempt < _options.MaximumTransientRetries)
+                    && transientRetryCount < _options.MaximumTransientRetries)
                 {
+                    transientRetryCount++;
                     await Task.Delay(
                         TimeSpan.FromSeconds(
-                            _options.TransientRetryDelaySeconds * (attempt + 1)),
+                            _options.TransientRetryDelaySeconds * transientRetryCount),
                         deadlineCancellation.Token);
                     continue;
                 }
 
-                return ToResult(request, prompt.Length, outcome);
+                if (outcome.Status == JobAnalysisStatus.InvalidOutput
+                    && !retriedInvalidOutput)
+                {
+                    retriedInvalidOutput = true;
+                    promptForAttempt = CopilotAnalysisPromptBuilder.BuildCorrectiveRetry(
+                        request,
+                        outcome.FailureCode);
+                    if (promptForAttempt.Length > _options.MaximumInputCharacters)
+                    {
+                        return ToResult(
+                            request,
+                            usage,
+                            CopilotRunOutcome.Failure(
+                                JobAnalysisStatus.OverBudget,
+                                "CorrectiveInputTooLarge"));
+                    }
+
+                    continue;
+                }
+
+                return ToResult(request, usage, outcome);
             }
         }
         catch (OperationCanceledException)
             when (!cancellationToken.IsCancellationRequested)
         {
+            if (usage.RequestCount > 0)
+            {
+                return ToResult(
+                    request,
+                    usage,
+                    CopilotRunOutcome.Failure(
+                        JobAnalysisStatus.TimedOut,
+                        "AnalysisDeadlineExceeded"));
+            }
+
             return Failure(
                 request,
                 JobAnalysisStatus.TimedOut,
@@ -187,15 +227,16 @@ public sealed class CopilotJobAnalyzer : IJobAnalyzer, IDisposable
 
     private JobAnalysisResult ToResult(
         JobAnalysisRequest request,
-        int inputCharacters,
+        UsageAccumulator accumulatedUsage,
         CopilotRunOutcome outcome)
     {
         var usage = new JobAnalysisUsage(
-            inputCharacters,
-            outcome.OutputCharacters,
-            outcome.InputTokens,
-            outcome.OutputTokens,
-            null);
+            accumulatedUsage.InputCharacters,
+            accumulatedUsage.OutputCharacters,
+            accumulatedUsage.InputTokens,
+            accumulatedUsage.OutputTokens,
+            accumulatedUsage.AiCredits,
+            accumulatedUsage.RequestCount);
         if (outcome.Status == JobAnalysisStatus.Succeeded
             && outcome.Output is not null)
         {
@@ -241,4 +282,35 @@ public sealed class CopilotJobAnalyzer : IJobAnalyzer, IDisposable
                 null,
                 null),
             request.Warnings);
+
+    private sealed class UsageAccumulator
+    {
+        public int InputCharacters { get; private set; }
+
+        public int OutputCharacters { get; private set; }
+
+        public long? InputTokens { get; private set; }
+
+        public long? OutputTokens { get; private set; }
+
+        public double? AiCredits { get; private set; }
+
+        public int RequestCount { get; private set; }
+
+        public void Add(int inputCharacters, CopilotRunOutcome outcome)
+        {
+            InputCharacters += inputCharacters;
+            OutputCharacters += outcome.OutputCharacters;
+            InputTokens = Add(InputTokens, outcome.InputTokens);
+            OutputTokens = Add(OutputTokens, outcome.OutputTokens);
+            AiCredits = Add(AiCredits, outcome.AiCredits);
+            RequestCount++;
+        }
+
+        private static long? Add(long? current, long? value) =>
+            value is null ? current : (current ?? 0) + value.Value;
+
+        private static double? Add(double? current, double? value) =>
+            value is null ? current : (current ?? 0) + value.Value;
+    }
 }

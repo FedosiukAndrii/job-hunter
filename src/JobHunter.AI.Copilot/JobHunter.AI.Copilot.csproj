@@ -7,4 +7,7 @@
     <PackageReference Include="GitHub.Copilot.SDK" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="PromptTemplates\JobAnalysis.json" />
+  </ItemGroup>
 </Project>
