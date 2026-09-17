@@ -110,6 +110,22 @@ public sealed class DouJobSourceTests
     }
 
     [Fact]
+    public async Task FetchAsyncDoesNotExposeTransportExceptionTextInDiagnostic()
+    {
+        const string marker = "private upstream exception detail";
+        using var source = CreateSource(
+            new StubHttpMessageHandler(
+                _ => throw new HttpRequestException(marker)));
+
+        var result = await source.FetchAsync(CreateRequest(), CancellationToken.None);
+
+        Assert.Equal(SourceRunStatus.Failed, result.Status);
+        Assert.Equal("TransportFailure", result.ErrorCode);
+        Assert.Equal("DOU request could not be completed.", result.Diagnostic);
+        Assert.DoesNotContain(marker, result.Diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task FetchAsyncUsesBoundedRetryForServerErrors()
     {
         var attempts = 0;

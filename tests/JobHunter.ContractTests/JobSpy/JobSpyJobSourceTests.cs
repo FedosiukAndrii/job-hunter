@@ -168,6 +168,61 @@ public sealed class JobSpyJobSourceTests
     }
 
     [Fact]
+    public async Task FetchAsyncDoesNotExposeUntrustedEnvelopeMessageInDiagnostic()
+    {
+        const string marker = "private vacancy description must not be logged";
+        var json =
+            $$"""
+            {
+              "status": "failed",
+              "jobs": [],
+              "error": {
+                "code": "parser_incompatible",
+                "message": "{{marker}}"
+              }
+            }
+            """;
+        using var source = CreateSource(
+            new StubHttpMessageHandler(
+                _ => JsonResponse(HttpStatusCode.OK, json)));
+
+        var result = await source.FetchAsync(CreateRequest(), CancellationToken.None);
+
+        Assert.Equal(SourceRunStatus.Failed, result.Status);
+        Assert.Equal("parser_incompatible", result.ErrorCode);
+        Assert.Equal(
+            "JobSpy reported a failed result (code: parser_incompatible).",
+            result.Diagnostic);
+        Assert.DoesNotContain(marker, result.Diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FetchAsyncRejectsUntrustedEnvelopeErrorCode()
+    {
+        const string marker = "<untrusted-source-content>";
+        var json =
+            $$"""
+            {
+              "status": "blocked",
+              "jobs": [],
+              "error": {
+                "code": "{{marker}}",
+                "message": "ignored"
+              }
+            }
+            """;
+        using var source = CreateSource(
+            new StubHttpMessageHandler(
+                _ => JsonResponse(HttpStatusCode.OK, json)));
+
+        var result = await source.FetchAsync(CreateRequest(), CancellationToken.None);
+
+        Assert.Equal(SourceRunStatus.Failed, result.Status);
+        Assert.Equal("InvalidContract", result.ErrorCode);
+        Assert.DoesNotContain(marker, result.Diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task FetchAsyncRejectsOversizedResponse()
     {
         var response = JsonResponse(

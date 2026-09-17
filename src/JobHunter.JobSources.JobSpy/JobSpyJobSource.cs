@@ -94,21 +94,22 @@ public sealed class JobSpyJobSource(
                     ?? throw new JsonException("The JobSpy response body is empty.");
                 ValidateContract(contract, options.Value.MaximumResults);
             }
-            catch (JsonException exception)
+            catch (JsonException)
             {
                 return JobSourceResult.Failed(
                     "InvalidContract",
-                    $"JobSpy response contract is invalid: {Bound(exception.Message, 512)}",
+                    "JobSpy response contract is invalid.",
                     now.AddMinutes(options.Value.MinimumIntervalMinutes));
             }
-            catch (InvalidDataException exception)
+            catch (InvalidDataException)
             {
                 return JobSourceResult.Failed(
                     "ResponseLimitExceeded",
-                    exception.Message,
+                    "JobSpy response exceeded the configured size limit.",
                     now.AddMinutes(options.Value.MinimumIntervalMinutes));
             }
 
+            var errorCode = GetErrorCode(contract.Error);
             var retryAfterUtc = contract.Error?.RetryAfterSeconds is > 0
                 ? now.AddSeconds(contract.Error.RetryAfterSeconds.Value)
                 : (DateTimeOffset?)null;
@@ -130,35 +131,34 @@ public sealed class JobSpyJobSource(
                     false,
                     now.AddMinutes(options.Value.MinimumIntervalMinutes),
                     retryAfterUtc,
-                    contract.Error?.Code ?? "PartialResult",
-                    contract.Error?.Message ?? "JobSpy returned a partial result."),
+                    errorCode ?? "PartialResult",
+                    CreateEnvelopeDiagnostic("partial", errorCode)),
                 "blocked" => JobSourceResult.Blocked(
-                    contract.Error?.Code ?? "Blocked",
-                    contract.Error?.Message
-                        ?? "JobSpy reported that the LinkedIn source is blocked.",
+                    errorCode ?? "Blocked",
+                    CreateEnvelopeDiagnostic("blocked", errorCode),
                     retryAfterUtc ?? now.AddHours(options.Value.BlockedBackoffHours)),
                 "failed" => JobSourceResult.Failed(
-                    contract.Error?.Code ?? "JobSpyFailed",
-                    contract.Error?.Message ?? "JobSpy reported a failed search.",
+                    errorCode ?? "JobSpyFailed",
+                    CreateEnvelopeDiagnostic("failed", errorCode),
                     retryAfterUtc ?? now.AddMinutes(options.Value.MinimumIntervalMinutes)),
                 _ => JobSourceResult.Failed(
                     "InvalidContract",
-                    $"JobSpy returned unknown status '{Bound(contract.Status, 64)}'.",
+                    "JobSpy returned an unknown status value.",
                     now.AddMinutes(options.Value.MinimumIntervalMinutes))
             };
         }
-        catch (HttpRequestException exception)
+        catch (HttpRequestException)
         {
             return JobSourceResult.Failed(
                 "TransportFailure",
-                $"JobSpy request failed: {Bound(exception.Message, 512)}",
+                "JobSpy request could not be completed.",
                 now.AddMinutes(options.Value.MinimumIntervalMinutes));
         }
-        catch (JsonException exception)
+        catch (JsonException)
         {
             return JobSourceResult.Failed(
                 "InvalidContract",
-                $"JobSpy response contract is invalid: {Bound(exception.Message, 512)}",
+                "JobSpy response contract is invalid.",
                 now.AddMinutes(options.Value.MinimumIntervalMinutes));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -179,6 +179,11 @@ public sealed class JobSpyJobSource(
         if (string.IsNullOrWhiteSpace(response.Status))
         {
             throw new JsonException("Required field 'status' is blank.");
+        }
+
+        if (response.Status.Length > 32)
+        {
+            throw new JsonException("Required field 'status' exceeds the maximum length.");
         }
 
         if (response.Jobs.Count > maximumResults)
@@ -214,6 +219,11 @@ public sealed class JobSpyJobSource(
             {
                 throw new JsonException($"Status '{response.Status}' requires an error object.");
             }
+        }
+
+        if (response.Error is not null && !IsSafeErrorCode(response.Error.Code))
+        {
+            throw new JsonException("error.code has an unsupported format.");
         }
     }
 
@@ -411,6 +421,34 @@ public sealed class JobSpyJobSource(
     private static bool IsLinkedInHost(string host) =>
         host.Equals("linkedin.com", StringComparison.OrdinalIgnoreCase)
         || host.EndsWith(".linkedin.com", StringComparison.OrdinalIgnoreCase);
+
+    private static string? GetErrorCode(JobSpyError? error) =>
+        error is null ? null : error.Code;
+
+    private static string CreateEnvelopeDiagnostic(string status, string? errorCode) =>
+        errorCode is null
+            ? $"JobSpy reported a {status} result."
+            : $"JobSpy reported a {status} result (code: {errorCode}).";
+
+    private static bool IsSafeErrorCode(string value)
+    {
+        if (value.Length is 0 or > 64)
+        {
+            return false;
+        }
+
+        foreach (var character in value)
+        {
+            if (!(character is >= 'a' and <= 'z'
+                or >= '0' and <= '9'
+                or '_' or '-'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static string CollapseWhitespace(string value) =>
         string.Join(

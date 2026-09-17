@@ -70,7 +70,7 @@ public sealed class DouJobSource(
             {
                 return JobSourceResult.Failed(
                     "UnsupportedContentType",
-                    $"DOU returned unsupported content type '{response.Content.Headers.ContentType?.MediaType ?? "missing"}'.",
+                    "DOU returned an unsupported response content type.",
                     now.AddMinutes(options.Value.DefaultIntervalMinutes));
             }
 
@@ -85,7 +85,7 @@ public sealed class DouJobSource(
             {
                 return JobSourceResult.Failed(
                     "ParserFailure",
-                    string.Join(" ", parseResult.Diagnostics),
+                    CreateParserDiagnostic(parseResult.Diagnostics.Count),
                     now.AddMinutes(options.Value.DefaultIntervalMinutes));
             }
 
@@ -101,27 +101,27 @@ public sealed class DouJobSource(
                 parseResult.Diagnostics.Count == 0 ? null : "PartialParse",
                 parseResult.Diagnostics.Count == 0
                     ? null
-                    : string.Join(" ", parseResult.Diagnostics));
+                    : CreateParserDiagnostic(parseResult.Diagnostics.Count));
         }
-        catch (XmlException exception)
+        catch (XmlException)
         {
             return JobSourceResult.Failed(
                 "MalformedXml",
-                $"DOU RSS parsing failed: {Bound(exception.Message, 512)}",
+                "DOU RSS parsing failed because the response XML is malformed.",
                 now.AddMinutes(options.Value.DefaultIntervalMinutes));
         }
-        catch (InvalidDataException exception)
+        catch (InvalidDataException)
         {
             return JobSourceResult.Failed(
                 "ResponseLimitExceeded",
-                exception.Message,
+                "DOU response exceeded the configured size limit.",
                 now.AddMinutes(options.Value.DefaultIntervalMinutes));
         }
-        catch (HttpRequestException exception)
+        catch (HttpRequestException)
         {
             return JobSourceResult.Failed(
                 "TransportFailure",
-                $"DOU request failed: {Bound(exception.Message, 512)}",
+                "DOU request could not be completed.",
                 now.AddMinutes(options.Value.DefaultIntervalMinutes));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -267,6 +267,6 @@ public sealed class DouJobSource(
         }
     }
 
-    private static string Bound(string value, int maximumLength) =>
-        value.Length <= maximumLength ? value : value[..maximumLength];
+    private static string CreateParserDiagnostic(int rejectedItemCount) =>
+        $"DOU parser rejected {rejectedItemCount} feed item(s).";
 }
