@@ -257,8 +257,9 @@ release, and disabled-source recovery.
 
 **Status:** Implemented behind provider-neutral contracts with Copilot disabled
 by default. Structured results, evidence references, redaction, local
-validation, bounded queue/concurrency/time/input/output, transient retry, and
-rules-only fallback are covered by deterministic tests. A live authenticated
+validation, bounded queue/concurrency/time/input/output, one corrective retry
+for locally invalid structured output, transient retry, and rules-only fallback
+are covered by deterministic tests. A live authenticated
 Copilot smoke test remains a release validation task.
 
 **Deliverables**
@@ -273,8 +274,9 @@ Copilot smoke test remains a release validation task.
 - Copilot lifecycle wrapper: start client, fresh constrained session per
   analysis, strict permission denial, timeout, cancellation, result extraction,
   local schema/evidence validation, and safe disposal.
-- AI queue/backpressure, small retry budget only for truly transient failures,
-  failure classification, telemetry, and optional session credit cap.
+- AI queue/backpressure, a small transient retry budget plus one
+  validator-specific corrective retry for invalid structured output, failure
+  classification, telemetry, and optional session credit cap.
 - `NullJobAnalyzer` / disabled provider behavior.
 
 **Critical validation**
@@ -307,8 +309,9 @@ chat and bot token.
 
 - Telegram bot setup workflow that validates destination ownership/chat ID.
 - `INotificationChannel` and `TelegramNotificationChannel`.
-- Pure renderer with HTML escaping, trusted URL validation, length checking, and
-  no sensitive content.
+- Pure renderer that fills a versioned embedded Telegram layout template, while
+  retaining HTML escaping, trusted URL validation, length checking, and no
+  sensitive content in code.
 - Durable outbox dispatcher with lease/retry classification.
 - Per-destination rate limiter, 429 `retry_after` handling, transient backoff,
   unknown-outcome policy, permanent destination failure behavior.
@@ -329,8 +332,9 @@ chat and bot token.
 
 **Status:** In progress. `doctor`, `run-once`, migration, setup, backup, restore,
 integrity checking, 30-day cleanup, documentation, and .NET/Python dependency
-audits are implemented. Native clean-machine/publish validation, live
-Telegram/Copilot smoke tests, and final privacy review remain; a local
+audits are implemented. Live Telegram and Copilot Luna smoke tests are
+complete; native clean-machine/publish validation and final privacy review
+remain; a local
 self-contained `win-x64` publish/startup smoke test passes, and
 `osx-arm64`/`osx-x64`/`linux-x64` cross-publishes succeed. Clean-machine Windows
 and macOS validation remains. Worker Docker/Compose and multi-architecture
@@ -516,12 +520,22 @@ Resolved during WP-07/WP-09:
 - Native Copilot authentication uses either the SDK's supported logged-in-user
   path or the optional `AI:Copilot:GitHubToken` secret. Compose support remains
   deferred with Worker container packaging.
-- Copilot uses model `auto` unless `AI:Copilot:Model` is explicitly configured.
+- The checked-in Copilot configuration requests `gpt-5.6-luna` and enables
+  `FailStartupWhenModelUnavailable`. Before `run` or `run-once` scans, the
+  worker validates the configured model against the authenticated catalogue and
+  creates a restricted no-tool session to confirm actual acceptance, including
+  when the SDK exposes its known limited `auto`-only catalogue. An unavailable
+  model stops the command; an operator may explicitly choose
+  `AI:Copilot:Model=auto` or disable strict startup validation to retain
+  rules-only fallback. Prompt prose is a versioned embedded template, while
+  code continues to enforce its tool and evidence boundaries.
 - The default AI guardrails are 48,000 input characters, 4,000 output
   characters, a 60-second deadline, concurrency `1`, and queue capacity `32`.
 - AI confidence below `0.65` is persisted as insufficient confidence and falls
   back to rules-only scoring. Accepted AI uses an equal-weight rules/AI score
   against `rulesAndAiThreshold`; transient results may retry after 60 minutes.
+  A locally invalid structured response gets at most one in-session corrective
+  retry in a fresh restricted session before the same conservative fallback.
 - The stable Copilot SDK does not expose a supported per-session credit cap.
   The adapter instead allows one terminal submission tool and enforces the
   documented time, size, concurrency, queue, and retry bounds.

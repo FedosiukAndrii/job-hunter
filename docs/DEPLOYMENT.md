@@ -160,12 +160,31 @@ dotnet run --project src\JobHunter.Worker -- run `
   --AI:Enabled=true
 ```
 
-The default model is `auto`; use `--AI:Copilot:Model <model-id>` only for an
-explicit supported override. Defaults bound each analysis to 48,000 input
+The checked-in default requests `gpt-5.6-luna` and sets
+`AI:Copilot:FailStartupWhenModelUnavailable=true`. With AI enabled, `run` and
+`run-once` validate the authenticated model before a source scan or notification
+can start. A normal catalogue that omits the named model fails with
+`CopilotModelUnavailable`. The SDK can expose only `auto` while still accepting
+a named model, so the worker then creates and immediately removes a restricted,
+no-tool session to validate the configured model. A failed probe stops the
+command with its explicit availability status; it never silently switches to
+`auto`. Use `--AI:Copilot:Model=auto` only as an explicit operator choice. Set
+`AI:Copilot:FailStartupWhenModelUnavailable=false` to retain rules-only fallback
+when that availability check fails.
+
+The AI instructions live in the versioned embedded template
+`src/JobHunter.AI.Copilot/PromptTemplates/JobAnalysis.json`, rather than in C#
+or deployment configuration. Edit it through normal code review; the worker
+validates the template at startup and keeps tool permissions and evidence
+delimiting in code.
+Defaults bound each analysis to 48,000 input
 characters, 4,000 validated output characters, 60 seconds, concurrency `1`,
-queue capacity `32`, and one transient retry. Confidence below `0.65` is stored
-as insufficient and falls back to rules-only scoring. Accepted AI contributes
-50% of the combined score, with deterministic rules contributing the other 50%.
+queue capacity `32`, one transient retry, and one corrective retry after a
+locally invalid structured output. Confidence below `0.65` is stored as
+insufficient and falls back to rules-only scoring. Accepted AI contributes 50%
+of the combined score, with deterministic rules contributing the other 50%.
+Debug Telegram messages show actual token usage and AI credits only when the SDK
+returns them; they do not infer a USD price.
 Transient failure states become eligible for a new attempt after 60 minutes.
 Input budgeting uses the actual Unicode-preserving JSON representation so
 Cyrillic vacancy text is not rejected merely because of serializer escaping.
@@ -200,6 +219,11 @@ only the message that received HTTP 429. The destination cooldown is persisted,
 survives worker restart, and also applies to rows enqueued before it expires.
 The MVP sends at most one notification for each job/destination pair, including
 after a job, profile, or rubric revision; those changes may still be re-scored.
+The user-facing Telegram text and HTML layout are in the versioned embedded
+template `src/JobHunter.Notifications.Telegram/Templates/TelegramNotification.json`.
+Edit it through normal code review. The renderer, not the template, continues
+to validate HTTPS URLs, redact sensitive text, HTML-escape dynamic values, and
+enforce Telegram's 4,096-character limit.
 
 ### Retention
 

@@ -221,11 +221,21 @@ must be able to audit why a job was selected.
   supported authentication mode and Copilot entitlement.
 - Each analysis uses a new, constrained session. No filesystem, shell, browser,
   network, MCP, or arbitrary custom tools may be available to the model.
-- Fixed application-owned instructions and schema define allowed criteria.
-  Vacancy/profile content is clearly delimited evidence-only data.
+- A versioned application-owned prompt template and schema define allowed
+  criteria. Vacancy/profile content is clearly delimited evidence-only data;
+  tool permissions and evidence delimiters remain enforced in code.
+- When AI is enabled with `FailStartupWhenModelUnavailable`, `run` and
+  `run-once` validate the configured model before any scan. An unavailable
+  model stops that command rather than silently selecting another model; the
+  operator may explicitly select `auto` or disable strict startup validation to
+  use rules-only fallback.
 - Output must be validated locally. Invalid, timed-out, unavailable, refused, or
   over-budget AI output must not fail ingestion and must never be silently
   interpreted as a successful analysis.
+- After a locally invalid structured submission, the system may make exactly one
+  bounded corrective retry in a fresh restricted session with a
+  validator-specific instruction. A second invalid result uses the same
+  conservative fallback.
 - Future adapters: Ollama via local HTTP API and OpenAI via the Responses API.
   They must implement the same domain contract without core changes.
 
@@ -239,6 +249,10 @@ must be able to audit why a job was selected.
 - Message fields: title, company, location/work mode, score and score mode,
   concise evidence/mismatch summary, credible compensation, age, and canonical
   HTTPS job link.
+- User-facing Telegram text and HTML layout are maintained in a versioned
+  application-owned template. The renderer keeps dynamic-value escaping,
+  redaction, trusted-URL validation, and length enforcement outside that
+  template.
 - Escape all source-controlled fields for Telegram HTML. Never include the full
   vacancy, CV, contact details, recruiter email, or private notes by default.
 - Enforce per-chat delivery <= 1 message/second and a bounded global queue.
