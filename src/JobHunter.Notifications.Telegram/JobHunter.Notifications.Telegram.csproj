@@ -8,4 +8,7 @@
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="Telegram.Bot" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\TelegramNotification.json" />
+  </ItemGroup>
 </Project>

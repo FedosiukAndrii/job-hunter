@@ -12,6 +12,8 @@ public sealed class TelegramOptions
 
     public bool Enabled { get; set; }
 
+    public bool DebugMode { get; set; }
+
     public string DestinationId
     {
         get => _destinationId;

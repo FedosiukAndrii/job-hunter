@@ -130,7 +130,6 @@ public sealed class TelegramNotificationChannelTests
             WorkplaceMode.Remote,
             90,
             "rules-only",
-            "Strong match.",
             null,
             null,
             null,

@@ -48,7 +48,8 @@ public sealed class TelegramNotificationChannel(
         {
             messageText = TelegramMessageRenderer.Render(
                 notification,
-                timeProvider.GetUtcNow());
+                timeProvider.GetUtcNow(),
+                options.Value.DebugMode);
         }
         catch (InvalidDataException)
         {

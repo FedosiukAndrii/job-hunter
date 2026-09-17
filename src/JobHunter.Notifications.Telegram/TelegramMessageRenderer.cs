@@ -11,7 +11,13 @@ public static class TelegramMessageRenderer
 {
     public const int MaximumMessageLength = 4096;
 
-    public static string Render(JobNotification notification, DateTimeOffset now)
+    private static readonly TelegramMessageTemplate Template =
+        TelegramMessageTemplate.Load();
+
+    public static string Render(
+        JobNotification notification,
+        DateTimeOffset now,
+        bool debugMode = false)
     {
         ArgumentNullException.ThrowIfNull(notification);
         if (!Uri.TryCreate(notification.CanonicalUrl, UriKind.Absolute, out var url)
@@ -30,125 +36,188 @@ public static class TelegramMessageRenderer
                 "The job URL is too long for a safe Telegram notification.");
         }
 
+        var finalScore = Math.Clamp(notification.Score, 0, 100);
+        var usedAi = notification.UsedAi
+            || string.Equals(
+                notification.ScoreMode,
+                "rules-and-ai",
+                StringComparison.OrdinalIgnoreCase);
+        var scoreMode = usedAi ? Template.ScoreModeAi : Template.ScoreModeRules;
         var title = EncodeBounded(
             Redact(Require(notification.Title, nameof(notification.Title))),
-            768);
+            240);
         var company = EncodeBounded(
             Redact(
                 string.IsNullOrWhiteSpace(notification.Company)
-                    ? "Company not specified"
+                    ? Template.CompanyNotSpecified
                     : notification.Company),
-            512);
-        var location = EncodeBounded(Redact(FormatLocation(notification)), 512);
-        var scoreMode = EncodeBounded(
-            Require(notification.ScoreMode, nameof(notification.ScoreMode)),
-            64);
-        var optionalLines = new List<string>();
+            220);
+        var location = EncodeBounded(Redact(FormatLocation(notification)), 240);
+        var footer = Template.Format(Template.Footer, ("url", encodedUrl));
+        var builder = new StringBuilder(
+            Template.Format(
+                Template.Header,
+                ("indicator", GetMatchIndicator(finalScore)),
+                ("score", finalScore.ToString(CultureInfo.InvariantCulture)),
+                ("scoreMode", scoreMode),
+                ("title", title),
+                ("company", company),
+                ("location", location)));
+
         var compensation = FormatCompensation(notification);
-        if (compensation is not null)
+        if (compensation.Length > 0)
         {
-            optionalLines.Add(EncodeBounded(compensation, 256));
+            AppendIfFits(
+                builder,
+                Template.Format(
+                    Template.CompensationBlock,
+                    ("compensation", EncodeBounded(compensation, 140))),
+                footer);
         }
 
         if (notification.PublishedAtUtc is not null)
         {
-            optionalLines.Add(FormatAge(notification.PublishedAtUtc.Value, now));
+            AppendIfFits(
+                builder,
+                Template.Format(
+                    Template.AgeBlock,
+                    ("age", FormatAge(notification.PublishedAtUtc.Value, now))),
+                footer);
         }
 
-        var prefix = string.Join(
-            '\n',
-            $"<b>{title}</b>",
-            company,
-            location,
-            FormattableString.Invariant(
-                $"Score: <b>{Math.Clamp(notification.Score, 0, 100)}/100</b> ({scoreMode})"));
-        var suffixBuilder = new StringBuilder();
-        foreach (var line in optionalLines)
+        var insights = FormatInsights(notification);
+        if (insights.Length > 0)
         {
-            suffixBuilder.Append('\n');
-            suffixBuilder.Append(line);
+            AppendIfFits(
+                builder,
+                Template.Format(Template.InsightsBlock, ("insights", insights)),
+                footer);
         }
 
-        suffixBuilder.Append('\n');
-        suffixBuilder.Append(CultureInfo.InvariantCulture, $"<a href=\"{encodedUrl}\">Open vacancy</a>");
-        var suffix = suffixBuilder.ToString();
-        var baseLength = prefix.Length + suffix.Length;
-        if (baseLength > MaximumMessageLength)
+        if (usedAi && !string.IsNullOrWhiteSpace(notification.AiSummary))
+        {
+            var summary = EncodeBounded(Redact(notification.AiSummary), 420);
+            AppendIfFits(
+                builder,
+                Template.Format(Template.AiSummaryBlock, ("summary", summary)),
+                footer);
+        }
+
+        if (debugMode)
+        {
+            AppendIfFits(
+                builder,
+                Template.Format(
+                    Template.DebugBlock,
+                    ("debug", FormatDebug(notification, finalScore, scoreMode))),
+                footer);
+        }
+
+        if (builder.Length + footer.Length > MaximumMessageLength)
         {
             throw new InvalidDataException(
                 "The required Telegram notification fields exceed the message limit.");
         }
 
-        var summarySpace = MaximumMessageLength - baseLength - 1;
-        var summary = string.IsNullOrWhiteSpace(notification.Summary)
-            || summarySpace < 4
-            ? string.Empty
-            : EncodeBounded(
-                Redact(notification.Summary),
-                Math.Min(2200, summarySpace));
-        var rendered = summary.Length == 0
-            ? string.Concat(prefix, suffix)
-            : string.Concat(prefix, "\n", summary, suffix);
-
-        if (rendered.Length > MaximumMessageLength)
-        {
-            throw new InvalidDataException(
-                "The rendered Telegram notification exceeds 4,096 characters.");
-        }
-
-        return rendered;
+        builder.Append(footer);
+        return builder.ToString();
     }
+
+    private static void AppendIfFits(
+        StringBuilder builder,
+        string content,
+        string footer)
+    {
+        if (builder.Length + content.Length + footer.Length <= MaximumMessageLength)
+        {
+            builder.Append(content);
+        }
+    }
+
+    private static string GetMatchIndicator(int score) => score switch
+    {
+        >= 75 => Template.MatchHigh,
+        >= 50 => Template.MatchMedium,
+        _ => Template.MatchLow
+    };
 
     private static string FormatLocation(JobNotification notification)
     {
-        var locations = notification.Locations.Count == 0
-            ? "Location not specified"
-            : string.Join(", ", notification.Locations);
+        var locations = notification.Locations
+            .Where(location => !string.IsNullOrWhiteSpace(location))
+            .Select(location => location.Trim())
+            .Where(
+                location => notification.WorkplaceMode == WorkplaceMode.Unknown
+                    || !string.Equals(location, "remote", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var location = locations.Length == 0
+            ? Template.LocationNotSpecified
+            : string.Join(", ", locations);
         var workplaceMode = notification.WorkplaceMode switch
         {
-            WorkplaceMode.Remote => "remote",
-            WorkplaceMode.Hybrid => "hybrid",
-            WorkplaceMode.OnSite => "on-site",
-            _ => "work mode not specified"
+            WorkplaceMode.Remote => Template.WorkplaceRemote,
+            WorkplaceMode.Hybrid => Template.WorkplaceHybrid,
+            WorkplaceMode.OnSite => Template.WorkplaceOnSite,
+            _ => null
         };
-        return $"{locations} | {workplaceMode}";
+
+        return workplaceMode is null
+            ? location
+            : Template.Format(
+                Template.LocationWithWorkplaceMode,
+                ("location", location),
+                ("workplaceMode", workplaceMode));
     }
 
-    private static string? FormatCompensation(JobNotification notification)
+    private static string FormatCompensation(JobNotification notification)
     {
-        if (notification.CompensationMinimum is null
-            && notification.CompensationMaximum is null)
-        {
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(notification.CompensationCurrency)
+        if ((notification.CompensationMinimum is null
+                && notification.CompensationMaximum is null)
+            || string.IsNullOrWhiteSpace(notification.CompensationCurrency)
             || notification.CompensationPeriod == CompensationPeriod.Unknown)
         {
-            return null;
+            return string.Empty;
         }
 
+        var currency = notification.CompensationCurrency.Trim().ToUpperInvariant();
         var amount = (notification.CompensationMinimum, notification.CompensationMaximum) switch
         {
             ({ } minimum, { } maximum) when minimum == maximum =>
-                minimum.ToString("0.##", CultureInfo.InvariantCulture),
+                FormatMoney(minimum, currency),
             ({ } minimum, { } maximum) =>
-                $"{minimum.ToString("0.##", CultureInfo.InvariantCulture)}-"
-                + maximum.ToString("0.##", CultureInfo.InvariantCulture),
-            ({ } minimum, null) =>
-                $"from {minimum.ToString("0.##", CultureInfo.InvariantCulture)}",
-            (null, { } maximum) =>
-                $"up to {maximum.ToString("0.##", CultureInfo.InvariantCulture)}",
-            _ => throw new InvalidOperationException("Unsupported compensation range.")
+                $"{FormatMoney(minimum, currency)}–{FormatMoney(maximum, currency)}",
+            ({ } minimum, null) => Template.Format(
+                Template.CompensationFrom,
+                ("amount", FormatMoney(minimum, currency))),
+            (null, { } maximum) => Template.Format(
+                Template.CompensationUpTo,
+                ("amount", FormatMoney(maximum, currency))),
+            _ => string.Empty
         };
         var period = notification.CompensationPeriod switch
         {
-            CompensationPeriod.Hour => "hour",
-            CompensationPeriod.Month => "month",
-            CompensationPeriod.Year => "year",
-            _ => throw new InvalidOperationException("Unsupported compensation period.")
+            CompensationPeriod.Hour => Template.CompensationHourly,
+            CompensationPeriod.Month => string.Empty,
+            CompensationPeriod.Year => Template.CompensationYearly,
+            _ => string.Empty
         };
-        return $"Compensation: {amount} {notification.CompensationCurrency.Trim().ToUpperInvariant()}/{period}";
+        return string.Concat(amount, period);
+    }
+
+    private static string FormatMoney(decimal amount, string currency)
+    {
+        var formatted = amount.ToString("#,0.##", CultureInfo.InvariantCulture);
+        return currency switch
+        {
+            "USD" => Template.Format(Template.CurrencyUsd, ("amount", formatted)),
+            "EUR" => Template.Format(Template.CurrencyEur, ("amount", formatted)),
+            "GBP" => Template.Format(Template.CurrencyGbp, ("amount", formatted)),
+            "UAH" => Template.Format(Template.CurrencyUah, ("amount", formatted)),
+            _ => Template.Format(
+                Template.CurrencyOther,
+                ("amount", formatted),
+                ("currency", currency))
+        };
     }
 
     private static string FormatAge(DateTimeOffset publishedAtUtc, DateTimeOffset now)
@@ -160,11 +229,145 @@ public static class TelegramMessageRenderer
         }
 
         return age.TotalDays >= 1
-            ? FormattableString.Invariant($"Published {Math.Floor(age.TotalDays)}d ago")
+            ? Template.Format(
+                Template.AgeDays,
+                ("value", Math.Floor(age.TotalDays).ToString(CultureInfo.InvariantCulture)))
             : age.TotalHours >= 1
-                ? FormattableString.Invariant($"Published {Math.Floor(age.TotalHours)}h ago")
-                : FormattableString.Invariant(
-                    $"Published {Math.Max(0, Math.Floor(age.TotalMinutes))}m ago");
+                ? Template.Format(
+                    Template.AgeHours,
+                    ("value", Math.Floor(age.TotalHours).ToString(CultureInfo.InvariantCulture)))
+                : Template.Format(
+                    Template.AgeMinutes,
+                    ("value", Math.Max(0, Math.Floor(age.TotalMinutes))
+                        .ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private static string FormatInsights(JobNotification notification)
+    {
+        var strengths = NormalizeInsights(notification.Strengths);
+        var concerns = NormalizeInsights(notification.Concerns);
+        var selected = new List<(string Icon, string Text)>();
+        if (strengths.Count > 0)
+        {
+            selected.Add((Template.InsightStrength, strengths[0]));
+        }
+
+        if (concerns.Count > 0)
+        {
+            selected.Add((Template.InsightConcern, concerns[0]));
+        }
+
+        foreach (var strength in strengths.Skip(1))
+        {
+            if (selected.Count == 2)
+            {
+                break;
+            }
+
+            selected.Add((Template.InsightStrength, strength));
+        }
+
+        foreach (var concern in concerns.Skip(1))
+        {
+            if (selected.Count == 2)
+            {
+                break;
+            }
+
+            selected.Add((Template.InsightConcern, concern));
+        }
+
+        return string.Join(
+            '\n',
+            selected.Select(
+                insight => Template.Format(
+                    Template.InsightLine,
+                    ("icon", insight.Icon),
+                    ("text", EncodeBounded(Redact(insight.Text), 180)))));
+    }
+
+    private static List<string> NormalizeInsights(IReadOnlyList<string>? values) =>
+        NormalizeValues(values, 2);
+
+    private static List<string> NormalizeValues(
+        IReadOnlyList<string>? values,
+        int maximumCount) =>
+        (values ?? [])
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(maximumCount)
+            .ToList();
+
+    private static string FormatDebug(
+        JobNotification notification,
+        int finalScore,
+        string scoreMode)
+    {
+        var deterministicScore = Math.Clamp(
+            notification.DeterministicScore ?? notification.Score,
+            0,
+            100);
+        var strongest = string.IsNullOrWhiteSpace(notification.StrongestCriterion)
+            ? Template.NotAvailable
+            : EncodeBounded(Redact(notification.StrongestCriterion), 120);
+        var missingFields = NormalizeValues(notification.MissingFields, 16);
+        var missing = missingFields.Count == 0
+            ? Template.None
+            : EncodeBounded(Redact(string.Join(", ", missingFields)), 300);
+        var hardFilterResult = notification.PassedHardFilters is null
+            ? Template.NotAvailable
+            : notification.PassedHardFilters.Value ? Template.Passed : Template.Failed;
+
+        return Template.Format(
+            Template.Debug,
+            ("deterministicScore", deterministicScore.ToString(CultureInfo.InvariantCulture)),
+            ("finalScore", finalScore.ToString(CultureInfo.InvariantCulture)),
+            ("strongestCriterion", strongest),
+            ("missingFields", missing),
+            ("hardFilterResult", hardFilterResult),
+            ("scoreMode", scoreMode),
+            ("aiUsage", FormatAiRequestUsage(notification)));
+    }
+
+    private static string FormatAiRequestUsage(JobNotification notification)
+    {
+        if (notification.AiRequestCount == 0
+            && notification.AiInputTokens is null
+            && notification.AiOutputTokens is null
+            && notification.AiCredits is null)
+        {
+            return Template.AiUsageNotRequested;
+        }
+
+        var calls = notification.AiRequestCount > 0
+            ? Template.Format(
+                Template.AiUsageCallCount,
+                ("value", notification.AiRequestCount.ToString(CultureInfo.InvariantCulture)))
+            : Template.AiUsageCallCountUnavailable;
+        var tokens = notification.AiInputTokens is null
+            && notification.AiOutputTokens is null
+                ? Template.AiUsageTokensUnavailable
+                : Template.Format(
+                    Template.AiUsageTokens,
+                    ("input", notification.AiInputTokens?.ToString(
+                        "N0",
+                        CultureInfo.InvariantCulture) ?? Template.UnknownValue),
+                    ("output", notification.AiOutputTokens?.ToString(
+                        "N0",
+                        CultureInfo.InvariantCulture) ?? Template.UnknownValue));
+        var credits = notification.AiCredits is null
+            ? Template.AiUsageCreditsUnavailable
+            : Template.Format(
+                Template.AiUsageCredits,
+                ("value", notification.AiCredits.Value.ToString(
+                    "0.########",
+                    CultureInfo.InvariantCulture)));
+        return Template.Format(
+            Template.AiUsage,
+            ("calls", calls),
+            ("tokens", tokens),
+            ("credits", credits));
     }
 
     private static string EncodeBounded(string value, int maximumEncodedLength)
