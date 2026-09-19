@@ -24,6 +24,42 @@ public sealed class CandidateProfileValidatorTests
         Assert.All(exception.Errors, error => Assert.False(string.IsNullOrWhiteSpace(error.Remediation)));
     }
 
+    [Fact]
+    public void ValidateRejectsBlankSenioritySelectionRule()
+    {
+        var profile = ValidProfile();
+        profile.RolePreferences.SenioritySelectionRules =
+        [new SenioritySelectionRule { Seniority = " " }];
+
+        var exception = Assert.Throws<CandidateProfileValidationException>(
+            () => CandidateProfileValidator.Validate(profile));
+
+        Assert.Contains(
+            exception.Errors,
+            error => error.Path == "$.rolePreferences.senioritySelectionRules[0]");
+    }
+
+    [Fact]
+    public void ValidateRejectsSeniorityAndMinimumExperienceInTheSameRule()
+    {
+        var profile = ValidProfile();
+        profile.RolePreferences.SenioritySelectionRules =
+        [
+            new SenioritySelectionRule
+            {
+                Seniority = "Senior",
+                MinimumRequiredExperienceYears = 4
+            }
+        ];
+
+        var exception = Assert.Throws<CandidateProfileValidationException>(
+            () => CandidateProfileValidator.Validate(profile));
+
+        Assert.Contains(
+            exception.Errors,
+            error => error.Path == "$.rolePreferences.senioritySelectionRules[0]");
+    }
+
     internal static CandidateProfile ValidProfile() =>
         new()
         {

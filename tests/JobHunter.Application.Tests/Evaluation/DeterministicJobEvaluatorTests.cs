@@ -1,4 +1,5 @@
 using JobHunter.Application.Evaluation;
+using JobHunter.Application.Profiles;
 using JobHunter.Application.Sources;
 using JobHunter.Application.Tests.Profiles;
 using JobHunter.Domain.Jobs;
@@ -86,6 +87,104 @@ public sealed class DeterministicJobEvaluatorTests
         Assert.DoesNotContain(
             result.HardFilters,
             filter => filter.ReasonCode is "LocationMismatch" or "BelowSalaryFloor");
+    }
+
+    [Fact]
+    public void EvaluateUsesSenioritySelectionRuleAsAnEligibilityGate()
+    {
+        var evaluator = new DeterministicJobEvaluator();
+        var profile = CandidateProfileValidatorTests.ValidProfile();
+        profile.RolePreferences.SenioritySelectionRules =
+        [
+            new SenioritySelectionRule { Seniority = "Senior" },
+            new SenioritySelectionRule
+            {
+                Seniority = "Middle",
+                RequiredAnyKeywords = ["бронювання", "reservation"]
+            }
+        ];
+
+        var middleWithReservation = MatchingJob() with
+        {
+            Seniority = "Middle",
+            Title = "Middle Backend Engineer",
+            DescriptionText = ".NET C# PostgreSQL FinTech English B2. Є бронювання працівників.",
+            DescriptionHtml = "<p>Є бронювання працівників.</p>"
+        };
+        var middleWithoutReservation = middleWithReservation with
+        {
+            DescriptionText = ".NET C# PostgreSQL FinTech English B2.",
+            DescriptionHtml = "<p>.NET C# PostgreSQL FinTech English B2.</p>"
+        };
+
+        Assert.True(evaluator.Evaluate(profile, middleWithReservation).PassedHardFilters);
+
+        var rejected = evaluator.Evaluate(profile, middleWithoutReservation);
+        Assert.False(rejected.PassedHardFilters);
+        Assert.Contains(
+            rejected.HardFilters,
+            filter => filter.ReasonCode == "SenioritySelectionMismatch");
+    }
+
+    [Fact]
+    public void EvaluateUsesExplicitTitleWhenSourceHasNoSeniorityField()
+    {
+        var evaluator = new DeterministicJobEvaluator();
+        var profile = CandidateProfileValidatorTests.ValidProfile();
+        profile.RolePreferences.SenioritySelectionRules =
+        [new SenioritySelectionRule { Seniority = "Senior" }];
+
+        var result = evaluator.Evaluate(profile, MatchingJob() with { Seniority = null });
+
+        Assert.True(result.PassedHardFilters);
+    }
+
+    [Theory]
+    [InlineData("Requires 4+ years of experience with .NET.")]
+    [InlineData("At least 4 years of .NET experience are required.")]
+    [InlineData("Потрібно від 4 років досвіду роботи з .NET.")]
+    public void EvaluateAcceptsOnlyExplicitMinimumExperienceFormulations(
+        string experienceRequirement)
+    {
+        var evaluator = new DeterministicJobEvaluator();
+        var profile = CandidateProfileValidatorTests.ValidProfile();
+        profile.RolePreferences.SenioritySelectionRules =
+        [new SenioritySelectionRule { MinimumRequiredExperienceYears = 4 }];
+        var job = MatchingJob() with
+        {
+            Title = "Backend Engineer",
+            Seniority = null,
+            DescriptionText = experienceRequirement,
+            DescriptionHtml = $"<p>{experienceRequirement}</p>"
+        };
+
+        Assert.True(evaluator.Evaluate(profile, job).PassedHardFilters);
+    }
+
+    [Theory]
+    [InlineData("We have built this product for 5 years.")]
+    [InlineData("Компанія працює від 5 років.")]
+    [InlineData("3+ years of .NET experience are required.")]
+    public void EvaluateDoesNotInferMinimumExperience(string description)
+    {
+        var evaluator = new DeterministicJobEvaluator();
+        var profile = CandidateProfileValidatorTests.ValidProfile();
+        profile.RolePreferences.SenioritySelectionRules =
+        [new SenioritySelectionRule { MinimumRequiredExperienceYears = 4 }];
+        var job = MatchingJob() with
+        {
+            Title = "Backend Engineer",
+            Seniority = null,
+            DescriptionText = description,
+            DescriptionHtml = $"<p>{description}</p>"
+        };
+
+        var evaluation = evaluator.Evaluate(profile, job);
+
+        Assert.False(evaluation.PassedHardFilters);
+        Assert.Contains(
+            evaluation.HardFilters,
+            filter => filter.ReasonCode == "SenioritySelectionMismatch");
     }
 
     private static JobSourceRecord MatchingJob() =>

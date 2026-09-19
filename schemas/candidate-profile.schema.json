@@ -117,6 +117,13 @@
         "seniorities": {
           "$ref": "#/$defs/uniqueStrings"
         },
+        "senioritySelectionRules": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/senioritySelectionRule"
+          }
+        },
         "locations": {
           "$ref": "#/$defs/uniqueStrings"
         },
@@ -175,6 +182,63 @@
           "default": false
         }
       }
+    },
+    "senioritySelectionRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "seniority"
+          ],
+          "not": {
+            "required": [
+              "minimumRequiredExperienceYears"
+            ]
+          }
+        },
+        {
+          "required": [
+            "minimumRequiredExperienceYears"
+          ],
+          "not": {
+            "required": [
+              "seniority"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "seniority": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "requiredAnyKeywords": {
+          "$ref": "#/$defs/uniqueStrings"
+        },
+        "minimumRequiredExperienceYears": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 80
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "minimumRequiredExperienceYears"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "requiredAnyKeywords"
+              ]
+            }
+          }
+        }
+      ]
     },
     "salary": {
       "type": "object",

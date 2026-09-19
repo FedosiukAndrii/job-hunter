@@ -46,6 +46,19 @@ public sealed class WorkerCommandTests
         Assert.Equal(WorkerCommandKind.Doctor, command.Kind);
     }
 
+    [Fact]
+    public void ShowProfileAcceptsConfigurationArguments()
+    {
+        Assert.True(
+            WorkerCommand.TryParse(
+                ["show-profile", "--Profile:FilePath", "C:\\profiles\\candidate.yaml"],
+                out var command));
+        Assert.Equal(WorkerCommandKind.ShowProfile, command.Kind);
+        Assert.Equal(
+            ["--Profile:FilePath", "C:\\profiles\\candidate.yaml"],
+            command.ConfigurationArguments);
+    }
+
     [Theory]
     [InlineData(0, 1, 0, 0)]
     [InlineData(0, 0, 1, 0)]

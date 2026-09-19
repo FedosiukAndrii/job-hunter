@@ -193,7 +193,9 @@ must be able to audit why a job was selected.
 
 - MVP accepts validated YAML or JSON profile data and optional Markdown CV text.
 - The structured profile contains target titles, skills with evidence/experience,
-  role preferences, locations, remote policy, employment types, languages,
+  role preferences, optional seniority-selection rules with keyword-based
+  exceptions or explicit minimum-experience alternatives, locations, remote
+  policy, employment types, languages,
   salary expectations, excluded employers/keywords, and weights/thresholds.
 - Markdown is supplementary evidence, not an unbounded instruction source.
 - Contact details, full addresses, photos, government IDs, unrelated health data,
@@ -203,7 +205,15 @@ must be able to audit why a job was selected.
 ### FR-07: Rules and scoring
 
 - Hard filters yield explicit reason codes, such as `ExcludedEmployer`,
-  `LocationMismatch`, `MissingMandatorySkill`, or `BelowSalaryFloor`.
+  `LocationMismatch`, `MissingMandatorySkill`, `SenioritySelectionMismatch`, or
+  `BelowSalaryFloor`.
+- Optional seniority-selection rules are deterministic eligibility gates. A rule
+  may allow a level unconditionally, allow it only when vacancy text explicitly
+  contains one configured exception keyword, or allow a vacancy only when it
+  contains an explicit recognized minimum-experience formulation (for example,
+  `4+ years`, `at least 4 years`, or `від 4 років досвіду`) at or above the
+  configured number. Bare durations and implied experience do not qualify;
+  unstructured agent notes do not override hard filters.
 - Deterministic score evaluates only job-relevant evidence and uses a versioned
   rubric. Default weights are: core .NET/C# 30, seniority 15, related stack 15,
   role responsibilities 15, location/language 10, domain 10, compensation 5.

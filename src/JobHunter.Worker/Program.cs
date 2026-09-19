@@ -124,7 +124,10 @@ internal static class ProgramEntry
                 };
             });
         builder.Services.AddSingleton<NotificationOutboxDispatcher>();
-        builder.Services.AddHostedService<StartupInitializationService>();
+        if (command.Kind != WorkerCommandKind.ShowProfile)
+        {
+            builder.Services.AddHostedService<StartupInitializationService>();
+        }
 
         if (command.Kind is WorkerCommandKind.Backup
             or WorkerCommandKind.Restore
@@ -139,6 +142,10 @@ internal static class ProgramEntry
         else if (command.Kind == WorkerCommandKind.SetupTelegram)
         {
             builder.Services.AddHostedService<TelegramSetupCompletionService>();
+        }
+        else if (command.Kind == WorkerCommandKind.ShowProfile)
+        {
+            builder.Services.AddHostedService<ProfilePreviewCompletionService>();
         }
         else if (command.Kind == WorkerCommandKind.RunOnce)
         {
@@ -237,5 +244,6 @@ internal static class ProgramEntry
         writer.WriteLine(
             "  job-hunter integrity-check [--input <database-path>] [configuration options]");
         writer.WriteLine("  job-hunter setup-telegram [configuration options]");
+        writer.WriteLine("  job-hunter show-profile [configuration options]");
     }
 }

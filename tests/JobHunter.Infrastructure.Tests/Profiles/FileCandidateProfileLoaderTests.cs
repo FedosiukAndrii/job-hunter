@@ -27,6 +27,10 @@ public sealed class FileCandidateProfileLoaderTests
             .LoadAsync(CancellationToken.None);
 
         Assert.Equal(["Backend Engineer"], profile.Profile.TargetTitles);
+        Assert.Equal(
+            4,
+            Assert.Single(profile.Profile.RolePreferences.SenioritySelectionRules)
+                .MinimumRequiredExperienceYears);
         Assert.Contains("[redacted-email]", profile.SupplementalCvRedacted);
         Assert.Contains("[redacted-phone]", profile.SupplementalCvRedacted);
         Assert.Contains("[redacted-address]", profile.SupplementalCvRedacted);
@@ -101,6 +105,8 @@ public sealed class FileCandidateProfileLoaderTests
         rolePreferences:
           seniorities:
             - Senior
+          senioritySelectionRules:
+            - minimumRequiredExperienceYears: 4
           locations:
             - Ukraine
           remotePolicy: remoteOnly

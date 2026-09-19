@@ -160,7 +160,7 @@ sequenceDiagram
 - `Sources/IJobSource.cs`, `JobSourceSubscriptions.cs` — контракт джерела
   вакансій і підписок на нього.
 - `Evaluation/` — `DeterministicJobEvaluator` (версійована рубрика
-  `rules-v1`), `JobQualificationPolicy` (пороги проходження),
+  `rules-v3`), `JobQualificationPolicy` (пороги проходження),
   `JobAnalysisRequestFactory` (формує запит для AI), інтерфейси сховищ
   оцінок/AI-аналізу.
 - `Notifications/NotificationOutboxDispatcher.cs` — читає durable outbox і

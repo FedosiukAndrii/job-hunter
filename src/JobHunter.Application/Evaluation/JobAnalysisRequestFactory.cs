@@ -63,6 +63,15 @@ public static class JobAnalysisRequestFactory
             + $"remote={profile.RolePreferences.RemotePolicy}; "
             + $"employment={Join(profile.RolePreferences.EmploymentTypes)}");
         collector.Add(
+            "profile:seniority-selection-rules",
+            JobAnalysisEvidenceSource.Profile,
+            Join(
+                profile.RolePreferences.SenioritySelectionRules.Select(
+                    rule => $"seniority={rule.Seniority ?? "unspecified"}; "
+                        + $"minimumRequiredExperienceYears="
+                        + $"{rule.MinimumRequiredExperienceYears?.ToString(CultureInfo.InvariantCulture) ?? "unspecified"}; "
+                        + $"requiredAnyKeywords={Join(rule.RequiredAnyKeywords)}")));
+        collector.Add(
             "profile:languages",
             JobAnalysisEvidenceSource.Profile,
             Join(

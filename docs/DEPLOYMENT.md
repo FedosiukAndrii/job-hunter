@@ -38,6 +38,7 @@ The implemented operational commands are:
 
 ```powershell
 dotnet run --project src\JobHunter.Worker -- doctor --Profile:FilePath C:\JobHunterData\profile.yaml
+dotnet run --project src\JobHunter.Worker -- show-profile --Profile:FilePath C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- run-once --source dou --Profile:FilePath C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- setup-telegram --Telegram:Enabled=true --Profile:FilePath C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- migrate
@@ -59,6 +60,12 @@ enabled. It also fails on a persisted blocked/disabled source or a missing or
 disabled Telegram destination. Its Telegram connectivity check does not send a
 message. `setup-telegram` sends one test message and re-enables the configured
 persisted destination after successful validation.
+
+`show-profile` is a local, read-only inspection command. It prints the canonical
+YAML/JSON profile representation plus the redacted Markdown-CV evidence that may
+be sent to the optional AI evaluator. It never calls a job source, Telegram, or
+the AI provider. Its output can contain private career information, so do not
+share it broadly.
 
 `run-once --source <dou|linkedin-jobspy>` bypasses the normal due time for the
 selected enabled source, but never bypasses disabled or blocked state. It runs

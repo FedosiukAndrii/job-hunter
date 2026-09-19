@@ -35,7 +35,7 @@ Implementation is in progress. WP-01 through the core WP-08 path now provide:
 - the full versioned domain/persistence model, idempotent ingestion, source-run
   leases, and backup/restore/integrity-check services;
 - YAML/JSON candidate profiles, bounded and redacted supplemental CV loading,
-  hard filters, and deterministic `rules-v1` scoring;
+  configurable seniority/explicit-experience hard filters, and deterministic `rules-v3` scoring;
 - a bounded DOU RSS adapter with safe XML/HTML handling, conditional requests,
   retries, canonical URLs, fixture tests, and optional detail enrichment;
 - an isolated, opt-in JobSpy/FastAPI service plus a loopback-only .NET adapter
@@ -93,6 +93,7 @@ Copy and customize the safe example profile, then start the Worker host:
 ```powershell
 Copy-Item deploy\examples\profile.yaml C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- doctor --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
+dotnet run --project src\JobHunter.Worker -- show-profile --Profile:FilePath C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- run-once --source dou --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- run --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
 ```
@@ -102,6 +103,10 @@ durable outbox. `run-once` forces one enabled, non-blocked source scan regardles
 of its next scheduled time, but does not start the continuous Telegram
 dispatcher. It returns a nonzero exit code unless every selected subscription
 completes successfully.
+
+`show-profile` prints the canonical structured profile and the contact-redacted
+supplemental Markdown CV that can be included as AI evidence. Treat its console
+output as private candidate data.
 
 Database maintenance commands require absolute output paths and never overwrite
 an existing restore destination. Put backups only in an operator-selected,

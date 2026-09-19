@@ -1,4 +1,5 @@
 using JobHunter.Domain.Jobs;
+using System.Text.Json.Serialization;
 
 namespace JobHunter.Application.Profiles;
 
@@ -54,11 +55,30 @@ public sealed class RolePreferences
 {
     public List<string> Seniorities { get; set; } = [];
 
+    // Unlike Seniorities, which contributes to the seniority score, these
+    // rules are an optional eligibility gate. A vacancy must match one rule
+    // before it can qualify when the collection is non-empty.
+    public List<SenioritySelectionRule> SenioritySelectionRules { get; set; } = [];
+
     public List<string> Locations { get; set; } = [];
 
     public RemotePolicy RemotePolicy { get; set; } = RemotePolicy.Any;
 
     public List<EmploymentType> EmploymentTypes { get; set; } = [];
+}
+
+public sealed class SenioritySelectionRule
+{
+    public string? Seniority { get; set; }
+
+    // This is an alternative to Seniority: the vacancy must explicitly state
+    // a recognized minimum experience requirement at or above this value.
+    public int? MinimumRequiredExperienceYears { get; set; }
+
+    // A matching seniority passes without an extra condition when this is
+    // empty. Otherwise, at least one term must be explicitly present in the
+    // vacancy title, description, skills, or categories.
+    public List<string> RequiredAnyKeywords { get; set; } = [];
 }
 
 public enum RemotePolicy
@@ -113,6 +133,7 @@ public sealed class ScoringWeights
 
     public int Compensation { get; set; } = 5;
 
+    [JsonIgnore]
     public int Total =>
         CoreSkills
         + Seniority

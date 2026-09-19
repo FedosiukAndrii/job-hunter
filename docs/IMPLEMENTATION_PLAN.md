@@ -138,7 +138,7 @@ idempotency, lease-recovery, and maintenance tests.
 ### WP-03: Profile and deterministic evaluation
 
 **Status:** Implemented with candidate-profile schema version `1` and
-deterministic rubric version `rules-v1`.
+deterministic rubric version `rules-v3`.
 
 **Deliverables**
 
@@ -154,7 +154,8 @@ deterministic rubric version `rules-v1`.
 
 - Invalid YAML/JSON is rejected at startup or profile reload with useful error.
 - Rules do not infer data that is absent.
-- Required skills, exclusions, remote policy, location, salary, and score
+- Required skills, exclusions, seniority-selection and explicit-experience
+  alternatives, remote policy, location, salary, and score
   calculations are deterministic.
 - Profile/rubric change produces a new versioned evaluation rather than mutating
   historical result.
@@ -509,7 +510,7 @@ The remaining decisions must be made only when their relevant phase begins:
 
 Resolved during WP-03/WP-04:
 
-- Candidate profiles use schema version `1`; the default `rules-v1` weights are
+- Candidate profiles use schema version `1`; the default `rules-v3` weights are
   core skills 30, seniority 15, related stack 15, role responsibilities 15,
   location/language 10, domain 10, and compensation 5.
 - DOU detail-page enrichment is optional and disabled by default. RSS remains

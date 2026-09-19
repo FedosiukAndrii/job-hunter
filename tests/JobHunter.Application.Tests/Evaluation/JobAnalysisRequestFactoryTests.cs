@@ -21,7 +21,19 @@ public sealed class JobAnalysisRequestFactoryTests
             {
                 Name = ".NET",
                 Evidence = ["Contact profile@example.com for API work"]
-            }]
+            }],
+            RolePreferences = new RolePreferences
+            {
+                SenioritySelectionRules =
+                [
+                    new SenioritySelectionRule
+                    {
+                        Seniority = "Middle",
+                        RequiredAnyKeywords = ["бронювання"]
+                    },
+                    new SenioritySelectionRule { MinimumRequiredExperienceYears = 4 }
+                ]
+            }
         };
         var loadedProfile = new LoadedCandidateProfile(
             profile,
@@ -71,6 +83,13 @@ public sealed class JobAnalysisRequestFactoryTests
                 "job@example.com",
                 StringComparison.Ordinal));
         Assert.Contains("EvidenceTruncated", request.Warnings);
+        Assert.Contains(
+            request.Evidence,
+            fragment => fragment.Id == "profile:seniority-selection-rules"
+                && fragment.Content.Contains("бронювання", StringComparison.Ordinal)
+                && fragment.Content.Contains(
+                    "minimumRequiredExperienceYears=4",
+                    StringComparison.Ordinal));
         var jsonOptions = JobAnalysisJson.CreateSerializerOptions();
         Assert.True(
             request.Evidence.Sum(

@@ -148,6 +148,7 @@ public static class CandidateProfileValidator
         }
 
         ValidateUniqueValues(preferences.Seniorities, "$.rolePreferences.seniorities", errors);
+        ValidateSenioritySelectionRules(preferences.SenioritySelectionRules, errors);
         ValidateUniqueValues(preferences.Locations, "$.rolePreferences.locations", errors);
 
         if (!Enum.IsDefined(preferences.RemotePolicy))
@@ -175,6 +176,61 @@ public static class CandidateProfileValidator
                     "$.rolePreferences.employmentTypes",
                     "Employment types must be unique.",
                     "Remove repeated employment type values."));
+        }
+    }
+
+    private static void ValidateSenioritySelectionRules(
+        List<SenioritySelectionRule>? rules,
+        List<ProfileValidationError> errors)
+    {
+        if (rules is null)
+        {
+            errors.Add(
+                new ProfileValidationError(
+                    "$.rolePreferences.senioritySelectionRules",
+                    "Seniority selection rules cannot be null.",
+                    "Use an empty array when seniority is only a scoring preference."));
+            return;
+        }
+
+        var index = 0;
+        foreach (var rule in rules)
+        {
+            var path = $"$.rolePreferences.senioritySelectionRules[{index}]";
+            var hasSeniority = !string.IsNullOrWhiteSpace(rule.Seniority);
+            var hasMinimumExperience = rule.MinimumRequiredExperienceYears is not null;
+            if (hasSeniority == hasMinimumExperience)
+            {
+                errors.Add(
+                    new ProfileValidationError(
+                        path,
+                        "Specify exactly one of seniority or minimumRequiredExperienceYears.",
+                        "Use Senior/Middle, or a positive explicit experience threshold, but not both."));
+            }
+
+            if (rule.MinimumRequiredExperienceYears is < 1 or > 80)
+            {
+                errors.Add(
+                    new ProfileValidationError(
+                        $"{path}.minimumRequiredExperienceYears",
+                        "The minimum required experience must be between 1 and 80 years.",
+                        "Use a positive whole number such as 4."));
+            }
+
+            if (hasMinimumExperience && rule.RequiredAnyKeywords is { Count: > 0 })
+            {
+                errors.Add(
+                    new ProfileValidationError(
+                        $"{path}.requiredAnyKeywords",
+                        "Keywords can be used only with a seniority rule.",
+                        "Remove keywords from the experience rule or use a seniority value."));
+            }
+
+            ValidateUniqueValues(
+                rule.RequiredAnyKeywords,
+                $"{path}.requiredAnyKeywords",
+                errors);
+            index++;
         }
     }
 

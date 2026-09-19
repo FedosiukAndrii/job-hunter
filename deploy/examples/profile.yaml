@@ -1,7 +1,8 @@
 schemaVersion: 1
 targetTitles:
-  - Backend Engineer
-  - .NET Developer
+  - Senior .NET Backend Developer
+  - Senior Backend Developer
+  - Senior .NET Developer
 skills:
   - name: .NET
     category: core
@@ -10,20 +11,70 @@ skills:
     aliases:
       - dotnet
     evidence:
-      - Built production web APIs
+      - Built scalable enterprise backend systems and production REST APIs
   - name: C#
     category: core
     required: true
-  - name: PostgreSQL
+    yearsExperience: 5
+    evidence:
+      - Developed backend services, ETL pipelines, and SQL processing logic
+  - name: ASP.NET Core
+    category: related
+    aliases:
+      - ASP.NET
+  - name: Microsoft SQL Server
+    category: related
+    aliases:
+      - MS SQL Server
+      - MSSQL
+      - SQL Server
+    evidence:
+      - Optimized high-load SQL processing, stored procedures, and query performance
+  - name: Entity Framework Core
+    category: related
+    aliases:
+      - EF Core
+  - name: REST API Development
+    category: related
+    aliases:
+      - REST API
+      - REST APIs
+  - name: Dapper
+    category: related
+  - name: ETL
+    category: related
+    evidence:
+      - Collected, transformed, validated, and exposed high-volume vendor datasets
+  - name: Azure
+    category: related
+    aliases:
+      - Azure App Services
+      - Azure Functions
+      - Azure Service Bus
+      - Azure Key Vault
+      - Application Insights
+  - name: Docker
     category: related
 rolePreferences:
   seniorities:
     - Senior
+  # Optional hard gate. With this present, only an explicitly stated Senior
+  # role passes, except an explicitly stated Middle role that also contains at
+  # least one of the reservation terms in its vacancy text, or a vacancy that
+  # explicitly requires at least four years of experience.
+  senioritySelectionRules:
+    - seniority: Senior
+    - seniority: Middle
+      requiredAnyKeywords:
+        - бронювання
+        - reservation
+    - minimumRequiredExperienceYears: 4
   locations:
     - Ukraine
   remotePolicy: remoteOnly
   employmentTypes:
     - fullTime
+    - partTime
 languages:
   - name: English
     minimumLevel: B2
@@ -47,3 +98,4 @@ scoring:
     locationLanguage: 10
     domain: 10
     compensation: 5
+supplementalCvPath: cv.md

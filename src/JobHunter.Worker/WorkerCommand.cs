@@ -8,6 +8,7 @@ internal enum WorkerCommandKind
     Restore,
     IntegrityCheck,
     SetupTelegram,
+    ShowProfile,
     Doctor,
     RunOnce,
     Help
@@ -44,6 +45,7 @@ internal sealed record WorkerCommand(
             "restore" => WorkerCommandKind.Restore,
             "integrity-check" => WorkerCommandKind.IntegrityCheck,
             "setup-telegram" => WorkerCommandKind.SetupTelegram,
+            "show-profile" => WorkerCommandKind.ShowProfile,
             "doctor" => WorkerCommandKind.Doctor,
             "run-once" => WorkerCommandKind.RunOnce,
             "--help" or "-h" or "help" => WorkerCommandKind.Help,
@@ -59,6 +61,7 @@ internal sealed record WorkerCommand(
         if (kind is WorkerCommandKind.Run
             or WorkerCommandKind.Migrate
             or WorkerCommandKind.SetupTelegram
+            or WorkerCommandKind.ShowProfile
             or WorkerCommandKind.Doctor
             or WorkerCommandKind.Help)
         {

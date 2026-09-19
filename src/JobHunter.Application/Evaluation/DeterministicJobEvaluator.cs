@@ -1,14 +1,15 @@
 using System.Text;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using JobHunter.Application.Profiles;
 using JobHunter.Application.Sources;
 using JobHunter.Domain.Jobs;
 
 namespace JobHunter.Application.Evaluation;
 
-public sealed class DeterministicJobEvaluator
+public sealed partial class DeterministicJobEvaluator
 {
-    public const string RubricVersion = "rules-v1";
+    public const string RubricVersion = "rules-v3";
 
     private readonly string _rubricVersion;
 
@@ -119,6 +120,15 @@ public sealed class DeterministicJobEvaluator
             }
         }
 
+        var senioritySelection = EvaluateSenioritySelectionRules(
+            profile.RolePreferences.SenioritySelectionRules,
+            job,
+            searchableText);
+        if (senioritySelection is not null)
+        {
+            results.Add(senioritySelection);
+        }
+
         var remoteResult = EvaluateRemotePolicy(profile.RolePreferences.RemotePolicy, job.WorkplaceMode);
         if (remoteResult is not null)
         {
@@ -182,6 +192,79 @@ public sealed class DeterministicJobEvaluator
 
         return results;
     }
+
+    private static HardFilterResult? EvaluateSenioritySelectionRules(
+        List<SenioritySelectionRule> rules,
+        JobSourceRecord job,
+        string searchableText)
+    {
+        if (rules.Count == 0)
+        {
+            return null;
+        }
+
+        // DOU does not always expose a separate seniority field. A title that
+        // explicitly names a level is still evidence; this does not infer one.
+        var seniorityEvidence = string.IsNullOrWhiteSpace(job.Seniority)
+            ? Normalize(job.Title)
+            : Normalize(job.Seniority);
+        var seniorityEvidenceId = string.IsNullOrWhiteSpace(job.Seniority)
+            ? "job:title"
+            : "job:seniority";
+        foreach (var rule in rules)
+        {
+            if (rule.MinimumRequiredExperienceYears is int minimumExperience
+                && HasExplicitMinimumExperience(
+                    job,
+                    minimumExperience))
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(rule.Seniority)
+                && ContainsTerm(seniorityEvidence, rule.Seniority)
+                && (rule.RequiredAnyKeywords.Count == 0
+                    || rule.RequiredAnyKeywords.Any(
+                        keyword => ContainsTerm(searchableText, keyword))))
+            {
+                return null;
+            }
+        }
+
+        return Failed(
+            "seniority-selection",
+            "SenioritySelectionMismatch",
+            seniorityEvidenceId,
+            "The vacancy does not match a configured seniority selection rule.");
+    }
+
+    private static bool HasExplicitMinimumExperience(
+        JobSourceRecord job,
+        int minimumRequiredExperienceYears)
+    {
+        // A bare "4 years" is deliberately not accepted: it could describe a
+        // product, company, or candidate rather than an eligibility requirement.
+        // Only unambiguous threshold formulations are recognized.
+        var experienceText = $"{job.Title}\n{job.DescriptionText}";
+        foreach (Match match in ExplicitExperienceRequirementPattern().Matches(experienceText))
+        {
+            if (int.TryParse(
+                    match.Groups["years"].Value,
+                    CultureInfo.InvariantCulture,
+                    out var years)
+                && years >= minimumRequiredExperienceYears)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [GeneratedRegex(
+        "(?<!\\d)(?<years>\\d{1,2})\\s*\\+\\s*(?:years?|yrs?)(?:\\s+(?:of\\s+)?experience)?\\b|\\bat\\s+least\\s+(?<years>\\d{1,2})\\s*(?:years?|yrs?)(?:\\s+(?:of\\s+)?experience)?\\b|\\b(?:minimum\\s+of|minimum)\\s+(?<years>\\d{1,2})\\s*(?:years?|yrs?)(?:\\s+(?:of\\s+)?experience)?\\b|(?:від|не\\s+менше\\s+ніж)\\s+(?<years>\\d{1,2})\\s+(?:роки|років)\\s+досвіду",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ExplicitExperienceRequirementPattern();
 
     private static HardFilterResult? EvaluateRemotePolicy(
         RemotePolicy policy,
