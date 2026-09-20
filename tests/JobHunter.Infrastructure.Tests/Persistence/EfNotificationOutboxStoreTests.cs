@@ -76,6 +76,144 @@ public sealed class EfNotificationOutboxStoreTests
     }
 
     [Fact]
+    public async Task EnqueueSuppressesPossibleDuplicateOnlyAfterRelatedJobWasSentToSameDestination()
+    {
+        await using var host = await PersistenceTestHost.CreateAsync();
+        var now = DateTimeOffset.UnixEpoch;
+        var sentJobId = await AddJobAsync(host, now);
+        var duplicateJobId = await AddJobAsync(
+            host,
+            now,
+            SourceName.LinkedInJobSpy,
+            "linkedin-456");
+        await using (var context = await CreateContextAsync(host))
+        {
+            context.JobPossibleDuplicates.Add(
+                JobPossibleDuplicate.CreateCompanyTitlePublishedAtV2(
+                    sentJobId,
+                    duplicateJobId,
+                    CrossSourceJobDuplicateMatcher.CreateMatchKey(
+                        "Example",
+                        "Senior .NET Engineer"),
+                    now));
+            await context.SaveChangesAsync();
+        }
+
+        var store = host.Services.GetRequiredService<INotificationOutboxStore>();
+        Assert.Equal(
+            NotificationEnqueueOutcome.Created,
+            await store.EnqueueAsync(
+                CreateIntent(sentJobId),
+                now,
+                CancellationToken.None));
+        var lease = await store.TryLeaseNextAsync(
+            now,
+            TimeSpan.FromMinutes(1),
+            CancellationToken.None);
+        Assert.NotNull(lease);
+        await store.CompleteAsync(
+            lease,
+            NotificationSendResult.Sent("telegram-message-1"),
+            null,
+            now.AddSeconds(1),
+            CancellationToken.None);
+
+        Assert.Equal(
+            NotificationEnqueueOutcome.Created,
+            await store.EnqueueAsync(
+                CreateIntent(duplicateJobId) with
+                {
+                    DestinationId = "telegram-other",
+                    SuppressPossibleDuplicateNotifications = true
+                },
+                now.AddSeconds(2),
+                CancellationToken.None));
+        Assert.Equal(
+            NotificationEnqueueOutcome.PossibleDuplicateAlreadySent,
+            await store.EnqueueAsync(
+                CreateIntent(duplicateJobId) with
+                {
+                    SuppressPossibleDuplicateNotifications = true
+                },
+                now.AddSeconds(2),
+                CancellationToken.None));
+
+        await using var verificationContext = await CreateContextAsync(host);
+        Assert.Equal(2, await verificationContext.NotificationOutbox.CountAsync());
+    }
+
+    [Fact]
+    public async Task TryLeaseNextSuppressesPendingPossibleDuplicateOnceRelatedJobWasSent()
+    {
+        await using var host = await PersistenceTestHost.CreateAsync();
+        var now = DateTimeOffset.UnixEpoch;
+        var firstJobId = await AddJobAsync(host, now);
+        var duplicateJobId = await AddJobAsync(
+            host,
+            now,
+            SourceName.LinkedInJobSpy,
+            "linkedin-456");
+        await using (var context = await CreateContextAsync(host))
+        {
+            context.JobPossibleDuplicates.Add(
+                JobPossibleDuplicate.CreateCompanyTitlePublishedAtV2(
+                    firstJobId,
+                    duplicateJobId,
+                    CrossSourceJobDuplicateMatcher.CreateMatchKey(
+                        "Example",
+                        "Senior .NET Engineer"),
+                    now));
+            await context.SaveChangesAsync();
+        }
+
+        var store = host.Services.GetRequiredService<INotificationOutboxStore>();
+        await store.EnqueueAsync(
+            CreateIntent(firstJobId) with
+            {
+                SuppressPossibleDuplicateNotifications = true
+            },
+            now,
+            CancellationToken.None);
+        await store.EnqueueAsync(
+            CreateIntent(duplicateJobId) with
+            {
+                SuppressPossibleDuplicateNotifications = true
+            },
+            now.AddSeconds(1),
+            CancellationToken.None);
+
+        var firstLease = await store.TryLeaseNextAsync(
+            now.AddSeconds(2),
+            TimeSpan.FromMinutes(1),
+            CancellationToken.None);
+        Assert.NotNull(firstLease);
+        Assert.Equal(
+            "https://jobs.dou.ua/vacancies/123456/",
+            firstLease.Payload.CanonicalUrl);
+        await store.CompleteAsync(
+            firstLease,
+            NotificationSendResult.Sent("telegram-message-1"),
+            null,
+            now.AddSeconds(3),
+            CancellationToken.None);
+
+        Assert.Null(await store.TryLeaseNextAsync(
+            now.AddSeconds(4),
+            TimeSpan.FromMinutes(1),
+            CancellationToken.None));
+
+        await using var verificationContext = await CreateContextAsync(host);
+        var suppressed = await verificationContext.NotificationOutbox
+            .Include(outbox => outbox.DeliveryAttempts)
+            .SingleAsync(outbox => outbox.JobId == duplicateJobId);
+        Assert.Equal(OutboxStatus.PermanentFailure, suppressed.Status);
+        Assert.Contains(
+            suppressed.DeliveryAttempts,
+            attempt => attempt.Outcome == "SuppressedPossibleDuplicate"
+                && attempt.ErrorCode == "PossibleDuplicateAlreadySent");
+    }
+
+    [Fact]
     public async Task EnqueueSuppressesWhenDestinationQueueIsFull()
     {
         await using var host = await PersistenceTestHost.CreateAsync();
@@ -385,14 +523,20 @@ public sealed class EfNotificationOutboxStoreTests
 
     private static async Task<Guid> AddJobAsync(
         PersistenceTestHost host,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        SourceName? source = null,
+        string sourceJobId = "123456")
     {
         await using var context = await CreateContextAsync(host);
+        var selectedSource = source ?? SourceName.Dou;
+        var sourceUrl = selectedSource == SourceName.LinkedInJobSpy
+            ? $"https://www.linkedin.com/jobs/view/{sourceJobId}"
+            : $"https://jobs.dou.ua/vacancies/{sourceJobId}/";
         var job = JobHunter.Domain.Jobs.Job.Create(
-            SourceName.Dou,
-            "123456",
-            "https://jobs.dou.ua/vacancies/123456/",
-            "https://jobs.dou.ua/vacancies/123456/",
+            selectedSource,
+            sourceJobId,
+            sourceUrl,
+            sourceUrl,
             null,
             "Senior .NET Engineer",
             "Example",

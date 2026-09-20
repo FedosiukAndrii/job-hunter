@@ -97,7 +97,7 @@ public sealed class EfJobIngestionStoreTests
     }
 
     [Fact]
-    public async Task SameFallbackFingerprintAcrossSourcesCreatesAuditableRelation()
+    public async Task MatchingCompanyTitleAndPublishedDatesAcrossSourcesCreatesAuditableRelation()
     {
         await using var host = await PersistenceTestHost.CreateAsync();
         var douSubscriptionId = await AddSubscriptionAsync(host, SourceName.Dou, "dotnet");
@@ -114,7 +114,17 @@ public sealed class EfJobIngestionStoreTests
             douRun.SourceRunId,
             douSubscriptionId,
             "dotnet",
-            [CreateRecord(SourceName.Dou, "dou-123", "content:dou", "raw:dou", "Build .NET APIs")],
+            [
+                CreateRecord(
+                    SourceName.Dou,
+                    "dou-123",
+                    "content:dou",
+                    "raw:dou",
+                    "Build .NET APIs",
+                    title: "Senior .NET Developer",
+                    company: "Acme, Inc.",
+                    publishedAtUtc: At("2026-09-10T00:00:00Z"))
+            ],
             CancellationToken.None);
         var jobSpyRun = await StartRunAsync(
             host,
@@ -132,7 +142,10 @@ public sealed class EfJobIngestionStoreTests
                     "content:linkedin",
                     "raw:linkedin",
                     "Build .NET APIs",
-                    "https://www.linkedin.com/jobs/view/456")
+                    "https://www.linkedin.com/jobs/view/456",
+                    "senior NET developer",
+                    "ACME INC",
+                    At("2026-09-15T00:00:00Z"))
             ],
             CancellationToken.None);
 
@@ -140,7 +153,126 @@ public sealed class EfJobIngestionStoreTests
         await using var context = await contextFactory.CreateDbContextAsync();
 
         Assert.Equal(2, await context.Jobs.CountAsync());
-        Assert.Single(await context.JobPossibleDuplicates.ToListAsync());
+        var possibleDuplicate = Assert.Single(
+            await context.JobPossibleDuplicates.ToListAsync());
+        Assert.Equal(
+            CrossSourceJobDuplicateMatcher.CompanyTitlePublishedAtV2,
+            possibleDuplicate.MatchReason);
+        Assert.Equal(1m, possibleDuplicate.Confidence);
+        Assert.StartsWith("v2:", possibleDuplicate.Fingerprint, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MatchingCompanyAndTitleWithoutBothPublishedDatesDoesNotCreateRelation()
+    {
+        await using var host = await PersistenceTestHost.CreateAsync();
+        var douSubscriptionId = await AddSubscriptionAsync(host, SourceName.Dou, "dotnet");
+        var jobSpySubscriptionId = await AddSubscriptionAsync(
+            host,
+            SourceName.LinkedInJobSpy,
+            "dotnet");
+        var store = host.Services.GetRequiredService<IJobIngestionStore>();
+        var douRun = await StartRunAsync(host, douSubscriptionId, At("2026-09-15T10:00:00Z"));
+
+        await store.PersistAsync(
+            douRun.SourceRunId,
+            douSubscriptionId,
+            "dotnet",
+            [
+                CreateRecord(
+                    SourceName.Dou,
+                    "dou-123",
+                    "content:dou",
+                    "raw:dou",
+                    "Build .NET APIs",
+                    title: "Senior .NET Developer",
+                    company: "Acme, Inc.")
+            ],
+            CancellationToken.None);
+        var jobSpyRun = await StartRunAsync(
+            host,
+            jobSpySubscriptionId,
+            At("2026-09-15T10:01:00Z"));
+
+        await store.PersistAsync(
+            jobSpyRun.SourceRunId,
+            jobSpySubscriptionId,
+            "dotnet",
+            [
+                CreateRecord(
+                    SourceName.LinkedInJobSpy,
+                    "linkedin-456",
+                    "content:linkedin",
+                    "raw:linkedin",
+                    "Different description",
+                    "https://www.linkedin.com/jobs/view/456",
+                    "senior NET developer",
+                    "ACME INC",
+                    At("2026-09-15T00:00:00Z"))
+            ],
+            CancellationToken.None);
+
+        var contextFactory = host.Services.GetRequiredService<IDbContextFactory<JobHunterDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+
+        Assert.Empty(await context.JobPossibleDuplicates.ToListAsync());
+    }
+
+    [Fact]
+    public async Task MatchingCompanyAndTitleMoreThanSevenDaysApartDoesNotCreateRelation()
+    {
+        await using var host = await PersistenceTestHost.CreateAsync();
+        var douSubscriptionId = await AddSubscriptionAsync(host, SourceName.Dou, "dotnet");
+        var jobSpySubscriptionId = await AddSubscriptionAsync(
+            host,
+            SourceName.LinkedInJobSpy,
+            "dotnet");
+        var store = host.Services.GetRequiredService<IJobIngestionStore>();
+        var douRun = await StartRunAsync(host, douSubscriptionId, At("2026-09-15T10:00:00Z"));
+
+        await store.PersistAsync(
+            douRun.SourceRunId,
+            douSubscriptionId,
+            "dotnet",
+            [
+                CreateRecord(
+                    SourceName.Dou,
+                    "dou-123",
+                    "content:dou",
+                    "raw:dou",
+                    "Build .NET APIs",
+                    title: "Senior .NET Developer",
+                    company: "Acme, Inc.",
+                    publishedAtUtc: At("2026-09-01T00:00:00Z"))
+            ],
+            CancellationToken.None);
+        var jobSpyRun = await StartRunAsync(
+            host,
+            jobSpySubscriptionId,
+            At("2026-09-15T10:01:00Z"));
+
+        await store.PersistAsync(
+            jobSpyRun.SourceRunId,
+            jobSpySubscriptionId,
+            "dotnet",
+            [
+                CreateRecord(
+                    SourceName.LinkedInJobSpy,
+                    "linkedin-456",
+                    "content:linkedin",
+                    "raw:linkedin",
+                    "Different description",
+                    "https://www.linkedin.com/jobs/view/456",
+                    "senior NET developer",
+                    "ACME INC",
+                    At("2026-09-09T00:00:00Z"))
+            ],
+            CancellationToken.None);
+
+        var contextFactory = host.Services.GetRequiredService<IDbContextFactory<JobHunterDbContext>>();
+        await using var context = await contextFactory.CreateDbContextAsync();
+
+        Assert.Empty(await context.JobPossibleDuplicates.ToListAsync());
     }
 
     private static async Task<Guid> AddSubscriptionAsync(
@@ -183,7 +315,10 @@ public sealed class EfJobIngestionStoreTests
         string contentHash,
         string rawPayloadHash,
         string description,
-        string url = "https://jobs.dou.ua/vacancies/123/") =>
+        string url = "https://jobs.dou.ua/vacancies/123/",
+        string title = "Senior .NET Engineer",
+        string company = "Example",
+        DateTimeOffset? publishedAtUtc = null) =>
         new()
         {
             Source = source,
@@ -191,8 +326,8 @@ public sealed class EfJobIngestionStoreTests
             SourceUrl = new Uri(url),
             CanonicalUrl = CanonicalJobUrl.Create(url),
             SourceGuid = sourceJobId,
-            Title = "Senior .NET Engineer",
-            Company = "Example",
+            Title = title,
+            Company = company,
             DescriptionHtml = $"<p>{description}</p>",
             DescriptionText = description,
             Locations = ["Kyiv"],
@@ -201,8 +336,10 @@ public sealed class EfJobIngestionStoreTests
             Seniority = "Senior",
             Skills = [".NET", "C#"],
             Categories = [".NET"],
-            PublishedAtUtc = At("2026-09-15T09:00:00Z"),
-            PublishedAtPrecision = PublishedAtPrecision.DateTime,
+            PublishedAtUtc = publishedAtUtc,
+            PublishedAtPrecision = publishedAtUtc is null
+                ? PublishedAtPrecision.Unknown
+                : PublishedAtPrecision.DateTime,
             ParserVersion = "test-v1",
             ContentHash = contentHash,
             RawPayloadHash = rawPayloadHash,

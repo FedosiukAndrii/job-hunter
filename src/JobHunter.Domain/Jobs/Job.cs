@@ -51,6 +51,8 @@ public sealed class Job : IConcurrencyTracked
 
     public DateTimeOffset? PublishedAtUtc { get; private set; }
 
+    public long? PublishedAtUnixTimeSeconds { get; private set; }
+
     public PublishedAtPrecision PublishedAtPrecision { get; private set; }
 
     public string ContentHash { get; private set; } = string.Empty;
@@ -131,6 +133,7 @@ public sealed class Job : IConcurrencyTracked
             CompensationCurrency = compensationCurrency,
             CompensationPeriod = compensationPeriod,
             PublishedAtUtc = publishedAtUtc,
+            PublishedAtUnixTimeSeconds = publishedAtUtc?.ToUnixTimeSeconds(),
             PublishedAtPrecision = publishedAtPrecision,
             ContentHash = contentHash,
             Fingerprint = fingerprint,
@@ -200,6 +203,7 @@ public sealed class Job : IConcurrencyTracked
         CompensationCurrency = compensationCurrency;
         CompensationPeriod = compensationPeriod;
         PublishedAtUtc = publishedAtUtc;
+        PublishedAtUnixTimeSeconds = publishedAtUtc?.ToUnixTimeSeconds();
         PublishedAtPrecision = publishedAtPrecision;
         ContentHash = contentHash;
         Fingerprint = fingerprint;

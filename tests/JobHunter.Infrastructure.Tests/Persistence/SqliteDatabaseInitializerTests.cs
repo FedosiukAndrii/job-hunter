@@ -33,7 +33,8 @@ public sealed class SqliteDatabaseInitializerTests
                 "20260916125220_NotificationDestinationState",
                 "20260916142928_AiAnalysisRevisionIdentity",
                 "20260916172037_PersistNotificationDestinationCooldown",
-                "20260920121654_RemoveLegacyRuleEvaluationScores"
+                "20260920121654_RemoveLegacyRuleEvaluationScores",
+                "20260920193004_AddDuplicateNotificationSuppression"
             ],
             appliedMigrations);
 

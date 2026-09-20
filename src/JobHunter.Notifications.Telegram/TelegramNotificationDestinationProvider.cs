@@ -10,6 +10,8 @@ internal sealed class TelegramNotificationDestinationProvider(
 {
     public IReadOnlyList<NotificationDestination> GetDestinations() =>
         options.Value.Enabled
-            ? [new NotificationDestination(options.Value.DestinationId)]
+            ? [new NotificationDestination(
+                options.Value.DestinationId,
+                suppressPossibleDuplicateNotifications: true)]
             : [];
 }

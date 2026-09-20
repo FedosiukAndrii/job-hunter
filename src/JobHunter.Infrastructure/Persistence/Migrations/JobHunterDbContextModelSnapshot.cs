@@ -213,6 +213,9 @@ namespace JobHunter.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("PublishedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("PublishedAtUnixTimeSeconds")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Seniority")
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
@@ -254,6 +257,8 @@ namespace JobHunter.Infrastructure.Persistence.Migrations
                     b.HasIndex("Source", "CanonicalUrl")
                         .IsUnique()
                         .HasFilter("\"SourceJobId\" IS NULL");
+
+                    b.HasIndex("Source", "PublishedAtUnixTimeSeconds");
 
                     b.HasIndex("Source", "SourceJobId")
                         .IsUnique()
@@ -510,6 +515,11 @@ namespace JobHunter.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
+
+                    b.Property<bool>("SuppressPossibleDuplicateNotifications")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
 
                     b.HasKey("Id");
 

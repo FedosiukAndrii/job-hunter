@@ -9,7 +9,9 @@ public interface INotificationDestinationProvider
 
 public sealed record NotificationDestination
 {
-    public NotificationDestination(string id)
+    public NotificationDestination(
+        string id,
+        bool suppressPossibleDuplicateNotifications = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         var normalized = id.Trim();
@@ -21,9 +23,12 @@ public sealed record NotificationDestination
         }
 
         Id = normalized;
+        SuppressPossibleDuplicateNotifications = suppressPossibleDuplicateNotifications;
     }
 
     public string Id { get; }
+
+    public bool SuppressPossibleDuplicateNotifications { get; }
 }
 
 public sealed record JobNotification(
@@ -60,14 +65,18 @@ public sealed record NotificationIntent(
     string DestinationId,
     Guid JobId,
     int NotificationVersion,
-    JobNotification Payload);
+    JobNotification Payload)
+{
+    public bool SuppressPossibleDuplicateNotifications { get; init; }
+}
 
 public enum NotificationEnqueueOutcome
 {
     Created = 0,
     AlreadyExists = 1,
     DestinationDisabled = 2,
-    QueueFull = 3
+    QueueFull = 3,
+    PossibleDuplicateAlreadySent = 4
 }
 
 public interface INotificationOutboxStore

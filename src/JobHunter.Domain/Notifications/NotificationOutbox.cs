@@ -18,6 +18,8 @@ public sealed class NotificationOutbox : IConcurrencyTracked
 
     public OutboxStatus Status { get; private set; }
 
+    public bool SuppressPossibleDuplicateNotifications { get; private set; }
+
     public DateTimeOffset CreatedAtUtc { get; private set; }
 
     public DateTimeOffset NextAttemptAtUtc { get; private set; }
@@ -41,7 +43,8 @@ public sealed class NotificationOutbox : IConcurrencyTracked
         Guid jobId,
         int notificationVersion,
         string payloadJson,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool suppressPossibleDuplicateNotifications = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationId);
         if (destinationId.Trim().Length > 256)
@@ -66,6 +69,7 @@ public sealed class NotificationOutbox : IConcurrencyTracked
             JobId = jobId,
             NotificationVersion = notificationVersion,
             Status = OutboxStatus.Pending,
+            SuppressPossibleDuplicateNotifications = suppressPossibleDuplicateNotifications,
             CreatedAtUtc = now,
             NextAttemptAtUtc = now,
             PayloadJson = payloadJson
@@ -191,6 +195,26 @@ public sealed class NotificationOutbox : IConcurrencyTracked
         AttemptCount = checked(AttemptCount + 1);
         var attempt = DeliveryAttempt.Start(Id, AttemptCount, now);
         attempt.Complete("SuppressedDestinationDisabled", errorCode, null, now);
+        DeliveryAttempts.Add(attempt);
+        Status = OutboxStatus.PermanentFailure;
+        ClearLease();
+        return attempt;
+    }
+
+    public DeliveryAttempt SuppressForPossibleDuplicate(
+        string errorCode,
+        DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
+        if (Status != OutboxStatus.Pending)
+        {
+            throw new InvalidOperationException(
+                "Only a pending notification can be suppressed as a possible duplicate.");
+        }
+
+        AttemptCount = checked(AttemptCount + 1);
+        var attempt = DeliveryAttempt.Start(Id, AttemptCount, now);
+        attempt.Complete("SuppressedPossibleDuplicate", errorCode, null, now);
         DeliveryAttempts.Add(attempt);
         Status = OutboxStatus.PermanentFailure;
         ClearLease();

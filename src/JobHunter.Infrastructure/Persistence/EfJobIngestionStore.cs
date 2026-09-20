@@ -3,6 +3,7 @@ using System.Text.Json;
 using JobHunter.Application.Persistence;
 using JobHunter.Application.Sources;
 using JobHunter.Domain.Jobs;
+using JobHunter.Domain.Sources;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunter.Infrastructure.Persistence;
@@ -111,16 +112,6 @@ public sealed class EfJobIngestionStore(IDbContextFactory<JobHunterDbContext> co
                 context.Jobs.Add(job);
                 createdCount++;
 
-                var crossSourceMatches = await context.Jobs
-                    .Where(existing => existing.Source != record.Source
-                        && existing.Fingerprint == fingerprint)
-                    .Select(existing => existing.Id)
-                    .ToListAsync(cancellationToken);
-                foreach (var matchId in crossSourceMatches)
-                {
-                    context.JobPossibleDuplicates.Add(
-                        JobPossibleDuplicate.Create(job.Id, matchId, fingerprint, 0.9m, record.RetrievedAtUtc));
-                }
             }
             else
             {
@@ -160,6 +151,12 @@ public sealed class EfJobIngestionStore(IDbContextFactory<JobHunterDbContext> co
                     updatedCount++;
                 }
             }
+
+            await AddCrossSourcePossibleDuplicatesAsync(
+                context,
+                job,
+                record.RetrievedAtUtc,
+                cancellationToken);
 
             var observationExists = await context.JobObservations.AnyAsync(
                 observation => observation.SourceRunId == sourceRunId
@@ -202,6 +199,83 @@ public sealed class EfJobIngestionStore(IDbContextFactory<JobHunterDbContext> co
 
     private static string Serialize<T>(T value) =>
         JsonSerializer.Serialize(value, JsonOptions);
+
+    private static async Task AddCrossSourcePossibleDuplicatesAsync(
+        JobHunterDbContext context,
+        JobHunter.Domain.Jobs.Job job,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (job.PublishedAtUtc is null)
+        {
+            return;
+        }
+
+        if (job.Source != SourceName.Dou
+            && job.Source != SourceName.LinkedInJobSpy)
+        {
+            return;
+        }
+
+        var counterpartSource = job.Source == SourceName.Dou
+            ? SourceName.LinkedInJobSpy
+            : SourceName.Dou;
+        var publishedAtMatchWindow =
+            CrossSourceJobDuplicateMatcher.GetPublishedAtMatchWindow(
+                job.PublishedAtUtc.Value);
+        var earliestPublishedAtUnixTimeSeconds =
+            publishedAtMatchWindow.Earliest.ToUnixTimeSeconds();
+        var latestPublishedAtUnixTimeSeconds =
+            publishedAtMatchWindow.Latest.ToUnixTimeSeconds();
+
+        var candidates = await context.Jobs
+            .AsNoTracking()
+            .Where(existing => existing.Source == counterpartSource
+                && existing.PublishedAtUnixTimeSeconds >= earliestPublishedAtUnixTimeSeconds
+                && existing.PublishedAtUnixTimeSeconds <= latestPublishedAtUnixTimeSeconds)
+            .Select(
+                existing => new
+                {
+                    existing.Id,
+                    existing.Company,
+                    existing.Title,
+                    existing.PublishedAtUtc
+                })
+            .ToListAsync(cancellationToken);
+        var existingRelations = await context.JobPossibleDuplicates
+            .Where(pair => pair.FirstJobId == job.Id || pair.SecondJobId == job.Id)
+            .ToListAsync(cancellationToken);
+        var relationByRelatedJobId = existingRelations.ToDictionary(
+            pair => pair.FirstJobId == job.Id ? pair.SecondJobId : pair.FirstJobId);
+        var matchKey = CrossSourceJobDuplicateMatcher.CreateMatchKey(job.Company, job.Title);
+
+        foreach (var candidate in candidates)
+        {
+            if (!CrossSourceJobDuplicateMatcher.IsMatch(
+                    job.Company,
+                    job.Title,
+                    job.PublishedAtUtc,
+                    candidate.Company,
+                    candidate.Title,
+                    candidate.PublishedAtUtc))
+            {
+                continue;
+            }
+
+            if (relationByRelatedJobId.TryGetValue(candidate.Id, out var existingRelation))
+            {
+                existingRelation.ApplyCompanyTitlePublishedAtV2(matchKey);
+                continue;
+            }
+
+            context.JobPossibleDuplicates.Add(
+                JobPossibleDuplicate.CreateCompanyTitlePublishedAtV2(
+                    job.Id,
+                    candidate.Id,
+                    matchKey,
+                    now));
+        }
+    }
 
     private static string SerializeSnapshot(JobHunter.Domain.Jobs.Job job) =>
         Serialize(

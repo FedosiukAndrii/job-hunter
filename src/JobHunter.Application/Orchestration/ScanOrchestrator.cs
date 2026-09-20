@@ -251,7 +251,8 @@ public sealed class ScanOrchestrator : IDisposable
                                 }
                                 else if (enqueueOutcome is
                                     NotificationEnqueueOutcome.DestinationDisabled
-                                    or NotificationEnqueueOutcome.QueueFull)
+                                    or NotificationEnqueueOutcome.QueueFull
+                                    or NotificationEnqueueOutcome.PossibleDuplicateAlreadySent)
                                 {
                                     suppressedIntents++;
                                 }
@@ -607,7 +608,11 @@ public sealed class ScanOrchestrator : IDisposable
                 AiOutputTokens = decision.AiUsage?.OutputTokens,
                 AiCredits = decision.AiUsage?.AiCredits,
                 AiRequestCount = decision.AiUsage?.RequestCount ?? 0
-            });
+            })
+        {
+            SuppressPossibleDuplicateNotifications =
+                destination.SuppressPossibleDuplicateNotifications
+        };
 }
 
 public sealed class ScanOrchestratorOptions

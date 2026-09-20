@@ -26,11 +26,10 @@ public sealed class JobPossibleDuplicate
 
     public DateTimeOffset? ReviewedAtUtc { get; private set; }
 
-    public static JobPossibleDuplicate Create(
+    public static JobPossibleDuplicate CreateCompanyTitlePublishedAtV2(
         Guid leftJobId,
         Guid rightJobId,
-        string fingerprint,
-        decimal confidence,
+        string matchKey,
         DateTimeOffset now)
     {
         if (leftJobId == rightJobId)
@@ -41,15 +40,22 @@ public sealed class JobPossibleDuplicate
         var first = leftJobId.CompareTo(rightJobId) < 0 ? leftJobId : rightJobId;
         var second = leftJobId.CompareTo(rightJobId) < 0 ? rightJobId : leftJobId;
 
-        return new JobPossibleDuplicate
+        var possibleDuplicate = new JobPossibleDuplicate
         {
             Id = Guid.NewGuid(),
             FirstJobId = first,
             SecondJobId = second,
-            MatchReason = "FallbackFingerprint",
-            Confidence = confidence,
-            Fingerprint = fingerprint,
             CreatedAtUtc = now
         };
+        possibleDuplicate.ApplyCompanyTitlePublishedAtV2(matchKey);
+        return possibleDuplicate;
+    }
+
+    public void ApplyCompanyTitlePublishedAtV2(string matchKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(matchKey);
+        MatchReason = CrossSourceJobDuplicateMatcher.CompanyTitlePublishedAtV2;
+        Confidence = 1m;
+        Fingerprint = matchKey;
     }
 }

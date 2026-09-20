@@ -32,7 +32,7 @@ public sealed class SqliteDatabaseMaintenanceTests
         command.CommandText = "SELECT COUNT(*) FROM __EFMigrationsHistory;";
 
         Assert.Equal(
-            6L,
+            7L,
             Convert.ToInt64(
                 await command.ExecuteScalarAsync(),
                 System.Globalization.CultureInfo.InvariantCulture));

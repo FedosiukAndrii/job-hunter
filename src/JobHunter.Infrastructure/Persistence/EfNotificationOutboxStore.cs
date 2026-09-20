@@ -1,6 +1,7 @@
 using System.Data;
 using System.Text.Json;
 using JobHunter.Application.Notifications;
+using JobHunter.Domain.Jobs;
 using JobHunter.Domain.Notifications;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -41,6 +42,16 @@ public sealed class EfNotificationOutboxStore(
             return NotificationEnqueueOutcome.AlreadyExists;
         }
 
+        if (intent.SuppressPossibleDuplicateNotifications
+            && await HasSentPossibleDuplicateAsync(
+                context,
+                intent.DestinationId,
+                intent.JobId,
+                cancellationToken))
+        {
+            return NotificationEnqueueOutcome.PossibleDuplicateAlreadySent;
+        }
+
         var activeCount = await context.NotificationOutbox.CountAsync(
             candidate => candidate.Status == OutboxStatus.Pending
                 || candidate.Status == OutboxStatus.Leased,
@@ -73,7 +84,8 @@ public sealed class EfNotificationOutboxStore(
             intent.JobId,
             intent.NotificationVersion,
             JsonSerializer.Serialize(intent.Payload, JsonOptions),
-            now);
+            now,
+            intent.SuppressPossibleDuplicateNotifications);
         if (destination.RateLimitedUntilUtc is { } rateLimitedUntilUtc)
         {
             outbox.DeferUntil(rateLimitedUntilUtc);
@@ -140,44 +152,60 @@ public sealed class EfNotificationOutboxStore(
             .Include(outbox => outbox.DeliveryAttempts)
             .Where(outbox => outbox.Status == OutboxStatus.Pending)
             .ToListAsync(cancellationToken);
-        var outbox = pending
+        var candidates = pending
             .Where(candidate => candidate.NextAttemptAtUtc <= now
                 && !unavailableDestinations.Contains(candidate.DestinationId))
             .OrderBy(candidate => candidate.NextAttemptAtUtc)
             .ThenBy(candidate => candidate.CreatedAtUtc)
-            .FirstOrDefault();
-        if (outbox is null)
+            .ToArray();
+        foreach (var outbox in candidates)
         {
-            return null;
+            if (outbox.SuppressPossibleDuplicateNotifications
+                && await HasSentPossibleDuplicateAsync(
+                    context,
+                    outbox.DestinationId,
+                    outbox.JobId,
+                    cancellationToken))
+            {
+                var suppressionAttempt = outbox.SuppressForPossibleDuplicate(
+                    "PossibleDuplicateAlreadySent",
+                    now);
+                context.DeliveryAttempts.Add(suppressionAttempt);
+                continue;
+            }
+
+            JobNotification payload;
+            try
+            {
+                payload = JsonSerializer.Deserialize<JobNotification>(
+                    outbox.PayloadJson,
+                    JsonOptions)
+                    ?? throw new JsonException("The outbox payload is empty.");
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidDataException(
+                    $"Notification outbox item '{outbox.Id}' has an invalid payload.",
+                    exception);
+            }
+
+            var attempt = outbox.Lease(now, leaseDuration);
+            context.DeliveryAttempts.Add(attempt);
+            await context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            return new NotificationOutboxLease(
+                outbox.Id,
+                outbox.DestinationId,
+                outbox.LeaseToken!,
+                attempt.Id,
+                attempt.AttemptNumber,
+                payload);
         }
 
-        JobNotification payload;
-        try
-        {
-            payload = JsonSerializer.Deserialize<JobNotification>(
-                outbox.PayloadJson,
-                JsonOptions)
-                ?? throw new JsonException("The outbox payload is empty.");
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidDataException(
-                $"Notification outbox item '{outbox.Id}' has an invalid payload.",
-                exception);
-        }
-
-        var attempt = outbox.Lease(now, leaseDuration);
-        context.DeliveryAttempts.Add(attempt);
         await context.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-
-        return new NotificationOutboxLease(
-            outbox.Id,
-            outbox.DestinationId,
-            outbox.LeaseToken!,
-            attempt.Id,
-            attempt.AttemptNumber,
-            payload);
+        return null;
     }
 
     public async Task CompleteAsync(
@@ -381,6 +409,27 @@ public sealed class EfNotificationOutboxStore(
                 && candidate.JobId == intent.JobId
                 && candidate.NotificationVersion == intent.NotificationVersion,
             cancellationToken);
+
+    private static async Task<bool> HasSentPossibleDuplicateAsync(
+        JobHunterDbContext context,
+        string destinationId,
+        Guid jobId,
+        CancellationToken cancellationToken)
+    {
+        var relatedJobIds = await context.JobPossibleDuplicates
+            .AsNoTracking()
+            .Where(pair =>
+                pair.MatchReason == CrossSourceJobDuplicateMatcher.CompanyTitlePublishedAtV2
+                && (pair.FirstJobId == jobId || pair.SecondJobId == jobId))
+            .Select(pair => pair.FirstJobId == jobId ? pair.SecondJobId : pair.FirstJobId)
+            .ToListAsync(cancellationToken);
+        return relatedJobIds.Count > 0
+            && await context.NotificationOutbox.AnyAsync(
+                candidate => candidate.DestinationId == destinationId
+                    && candidate.Status == OutboxStatus.Sent
+                    && relatedJobIds.Contains(candidate.JobId),
+                cancellationToken);
+    }
 
     private static string Require(string? value, string parameterName)
     {

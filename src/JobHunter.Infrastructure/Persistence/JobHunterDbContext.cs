@@ -163,6 +163,7 @@ public sealed class JobHunterDbContext(DbContextOptions<JobHunterDbContext> opti
         job.HasIndex(entity => new { entity.Source, entity.CanonicalUrl })
             .IsUnique()
             .HasFilter("\"SourceJobId\" IS NULL");
+        job.HasIndex(entity => new { entity.Source, entity.PublishedAtUnixTimeSeconds });
         job.HasIndex(entity => entity.Fingerprint);
 
         var revision = modelBuilder.Entity<JobRevision>();
@@ -288,6 +289,8 @@ public sealed class JobHunterDbContext(DbContextOptions<JobHunterDbContext> opti
         outbox.ToTable("NotificationOutbox");
         outbox.HasKey(entity => entity.Id);
         outbox.Property(entity => entity.DestinationId).HasMaxLength(256).IsRequired();
+        outbox.Property(entity => entity.SuppressPossibleDuplicateNotifications)
+            .HasDefaultValue(false);
         outbox.Property(entity => entity.LeaseToken).HasMaxLength(32);
         outbox.Property(entity => entity.PayloadJson).IsRequired();
         outbox.Property(entity => entity.ConcurrencyVersion).IsConcurrencyToken();
