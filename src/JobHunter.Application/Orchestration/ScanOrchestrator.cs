@@ -19,7 +19,6 @@ public sealed class ScanOrchestrator : IDisposable
     private readonly IJobIngestionStore _ingestionStore;
     private readonly ICandidateProfileLoader _profileLoader;
     private readonly ICandidateProfileStore _profileStore;
-    private readonly DeterministicJobEvaluator _evaluator;
     private readonly IRuleEvaluationStore _evaluationStore;
     private readonly IJobAnalyzer _jobAnalyzer;
     private readonly IAiAnalysisStore _aiAnalysisStore;
@@ -37,7 +36,6 @@ public sealed class ScanOrchestrator : IDisposable
         IJobIngestionStore ingestionStore,
         ICandidateProfileLoader profileLoader,
         ICandidateProfileStore profileStore,
-        DeterministicJobEvaluator evaluator,
         IRuleEvaluationStore evaluationStore,
         IJobAnalyzer jobAnalyzer,
         IAiAnalysisStore aiAnalysisStore,
@@ -59,7 +57,6 @@ public sealed class ScanOrchestrator : IDisposable
         _ingestionStore = ingestionStore;
         _profileLoader = profileLoader;
         _profileStore = profileStore;
-        _evaluator = evaluator;
         _evaluationStore = evaluationStore;
         _jobAnalyzer = jobAnalyzer;
         _aiAnalysisStore = aiAnalysisStore;
@@ -164,7 +161,7 @@ public sealed class ScanOrchestrator : IDisposable
             var suppressedIntents = 0;
             var aiAnalyses = 0;
             var acceptedAiAnalyses = 0;
-            var aiFallbacks = 0;
+            var deferredAiAnalyses = 0;
 
             if (sourceResult.Status is SourceRunStatus.Succeeded or SourceRunStatus.Partial)
             {
@@ -185,7 +182,7 @@ public sealed class ScanOrchestrator : IDisposable
 
                         foreach (var job in ingestionResult.Jobs)
                         {
-                            var evaluation = _evaluator.Evaluate(
+                            var evaluation = DeterministicJobEvaluator.Evaluate(
                                 loadedProfile.Profile,
                                 job.Record);
                             await _evaluationStore.SaveAsync(
@@ -210,29 +207,26 @@ public sealed class ScanOrchestrator : IDisposable
 
                     foreach (var evaluatedJob in evaluatedJobs)
                     {
-                        JobAnalysisResult? analysis = null;
-                        if (_jobAnalyzer.Capabilities.IsEnabled)
+                        aiAnalyses++;
+                        var analysis = await GetOrAnalyzeAsync(
+                            loadedProfile,
+                            profileSnapshot,
+                            evaluatedJob.Job,
+                            runCancellationToken);
+                        if (analysis.IsSuccessful)
                         {
-                            aiAnalyses++;
-                            analysis = await GetOrAnalyzeAsync(
-                                loadedProfile,
-                                profileSnapshot,
-                                evaluatedJob.Job,
-                                runCancellationToken);
-                            if (analysis.IsSuccessful)
-                            {
-                                acceptedAiAnalyses++;
-                            }
-                            else
-                            {
-                                aiFallbacks++;
-                            }
+                            acceptedAiAnalyses++;
+                        }
+                        else
+                        {
+                            deferredAiAnalyses++;
                         }
 
                         var decision = JobQualificationPolicy.Decide(
                             evaluatedJob.Evaluation,
                             analysis,
-                            _options.MinimumAiConfidence);
+                            _options.MinimumAiConfidence,
+                            _options.MinimumAiFitScore);
                         if (!decision.Qualifies)
                         {
                             continue;
@@ -320,7 +314,7 @@ public sealed class ScanOrchestrator : IDisposable
                 suppressedIntents,
                 aiAnalyses,
                 acceptedAiAnalyses,
-                aiFallbacks);
+                deferredAiAnalyses);
         }
         catch (Exception exception)
         {
@@ -508,7 +502,9 @@ public sealed class ScanOrchestrator : IDisposable
     }
 
     private static bool IsRetryable(JobAnalysisStatus status) =>
-        status is JobAnalysisStatus.TimedOut
+        status is JobAnalysisStatus.InsufficientConfidence
+            or JobAnalysisStatus.InvalidOutput
+            or JobAnalysisStatus.TimedOut
             or JobAnalysisStatus.Unavailable
             or JobAnalysisStatus.OverBudget
             or JobAnalysisStatus.TransientFailure;
@@ -596,7 +592,6 @@ public sealed class ScanOrchestrator : IDisposable
                 job.Record.Locations,
                 job.Record.WorkplaceMode,
                 decision.Score,
-                decision.ScoreMode,
                 job.Record.CompensationMinimum,
                 job.Record.CompensationMaximum,
                 job.Record.CompensationCurrency,
@@ -604,14 +599,10 @@ public sealed class ScanOrchestrator : IDisposable
                 job.Record.PublishedAtUtc,
                 job.Record.CanonicalUrl.ToString())
             {
-                UsedAi = decision.UsedAi,
                 AiSummary = decision.AiSummary,
                 Strengths = decision.Strengths,
                 Concerns = decision.Concerns,
-                DeterministicScore = decision.DeterministicScore,
                 PassedHardFilters = decision.PassedHardFilters,
-                StrongestCriterion = decision.StrongestCriterion,
-                MissingFields = decision.MissingFields,
                 AiInputTokens = decision.AiUsage?.InputTokens,
                 AiOutputTokens = decision.AiUsage?.OutputTokens,
                 AiCredits = decision.AiUsage?.AiCredits,
@@ -630,6 +621,8 @@ public sealed class ScanOrchestratorOptions
     public TimeSpan AiAnalysisTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
     public double MinimumAiConfidence { get; init; } = 0.65;
+
+    public int MinimumAiFitScore { get; init; } = 75;
 
     public TimeSpan AiTransientFailureRetryDelay { get; init; } =
         TimeSpan.FromHours(1);
@@ -678,6 +671,14 @@ public sealed class ScanOrchestratorOptions
                 "Minimum AI confidence must be between 0 and 1.");
         }
 
+        if (MinimumAiFitScore is < 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MinimumAiFitScore),
+                MinimumAiFitScore,
+                "Minimum AI fit score must be between 0 and 100.");
+        }
+
         if (AiTransientFailureRetryDelay < TimeSpan.FromMinutes(1)
             || AiTransientFailureRetryDelay > TimeSpan.FromDays(1))
         {
@@ -700,7 +701,7 @@ public sealed record SourceScanSummary(
     int SuppressedNotificationIntentCount,
     int AiAnalysisCount,
     int AcceptedAiAnalysisCount,
-    int AiFallbackCount)
+    int DeferredAiAnalysisCount)
 {
     public static SourceScanSummary Skipped(SourceName source) =>
         new(source, true, null, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -720,7 +721,7 @@ public sealed record ScanBatchSummary(
     int SuppressedNotificationIntentCount,
     int AiAnalysisCount,
     int AcceptedAiAnalysisCount,
-    int AiFallbackCount)
+    int DeferredAiAnalysisCount)
 {
     public static ScanBatchSummary Empty { get; } =
         new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
@@ -741,5 +742,5 @@ public sealed record ScanBatchSummary(
             results.Sum(result => result.SuppressedNotificationIntentCount),
             results.Sum(result => result.AiAnalysisCount),
             results.Sum(result => result.AcceptedAiAnalysisCount),
-            results.Sum(result => result.AiFallbackCount));
+            results.Sum(result => result.DeferredAiAnalysisCount));
 }

@@ -16,9 +16,7 @@ public sealed class TelegramMessageRendererTests
             canonicalUrl: "https://jobs.dou.ua/vacancies/123/?x=1&y=2") with
         {
             Locations = ["<remote>"],
-            ScoreMode = "<rules>",
             CompensationCurrency = "<usd>",
-            UsedAi = true,
             AiSummary = "Strong <match> & evidence",
             Strengths = ["Strong <stack> match"],
             Concerns = ["Missing <cloud> experience"]
@@ -33,7 +31,6 @@ public sealed class TelegramMessageRendererTests
         Assert.DoesNotContain("<script>", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("<match>", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("<remote>", rendered, StringComparison.Ordinal);
-        Assert.DoesNotContain("<rules>", rendered, StringComparison.Ordinal);
         Assert.DoesNotContain("<USD>", rendered, StringComparison.Ordinal);
         Assert.Contains("&lt;b&gt;Lead &amp; &quot;Owner&quot;&lt;/b&gt;", rendered);
         Assert.Contains("&lt;script&gt;company&lt;/script&gt;", rendered);
@@ -83,7 +80,6 @@ public sealed class TelegramMessageRendererTests
             summary: "Recruiter: recruiter@example.com\nAddress: 1 Private Street") with
         {
             Locations = ["Address: 2 Private Avenue"],
-            UsedAi = true,
             AiSummary = "Recruiter: recruiter@example.com\nAddress: 1 Private Street",
             Strengths = ["Contact vacancy@example.com"],
             Concerns = ["Call +1 (425) 555-0123"]
@@ -109,15 +105,10 @@ public sealed class TelegramMessageRendererTests
         var notification = CreateNotification() with
         {
             Score = 78,
-            ScoreMode = "rules-and-ai",
-            UsedAi = true,
             AiSummary = "Strong match for .NET, SQL and backend work; AWS is not stated.",
             Strengths = ["Strong .NET/backend match"],
             Concerns = ["AWS experience is not stated"],
-            DeterministicScore = 72,
             PassedHardFilters = true,
-            StrongestCriterion = "coreSkills (35/35)",
-            MissingFields = ["job:compensation"],
             PublishedAtUtc = DateTimeOffset.Parse(
                 "2026-09-16T00:00:00Z",
                 System.Globalization.CultureInfo.InvariantCulture)
@@ -150,10 +141,7 @@ public sealed class TelegramMessageRendererTests
         var notification = CreateNotification() with
         {
             Score = 60,
-            DeterministicScore = 55,
             PassedHardFilters = true,
-            StrongestCriterion = "coreSkills (24/35)",
-            MissingFields = ["job:compensation", "job:seniority", "job:languages"],
             AiInputTokens = 1_234,
             AiOutputTokens = 567,
             AiCredits = 0.0125,
@@ -165,14 +153,10 @@ public sealed class TelegramMessageRendererTests
             DateTimeOffset.UnixEpoch,
             debugMode: true);
 
-        Assert.Contains("🟡 60% · ⚙️ Rules", rendered, StringComparison.Ordinal);
+        Assert.Contains("🟡 60% · ✨ AI", rendered, StringComparison.Ordinal);
         Assert.Contains("<b>Debug</b>", rendered, StringComparison.Ordinal);
-        Assert.Contains("⚙️ Rules score: 55%", rendered, StringComparison.Ordinal);
-        Assert.Contains("🎯 Final score: 60%", rendered, StringComparison.Ordinal);
-        Assert.Contains("🏆 Strongest criterion: coreSkills (24/35)", rendered, StringComparison.Ordinal);
-        Assert.Contains("🧩 Missing fields: job:compensation, job:seniority, job:languages", rendered, StringComparison.Ordinal);
+        Assert.Contains("🎯 AI fit score: 60%", rendered, StringComparison.Ordinal);
         Assert.Contains("🛡 Hard filters: passed", rendered, StringComparison.Ordinal);
-        Assert.Contains("🧮 Scoring method: ⚙️ Rules", rendered, StringComparison.Ordinal);
         Assert.Contains("💳 AI request: 2 call(s); 1,234 in / 567 out tokens; 0.0125 AI credits", rendered, StringComparison.Ordinal);
     }
 
@@ -187,7 +171,6 @@ public sealed class TelegramMessageRendererTests
             ["Kyiv <remote>"],
             WorkplaceMode.Remote,
             90,
-            "rules-only",
             5_000,
             6_000,
             "usd",

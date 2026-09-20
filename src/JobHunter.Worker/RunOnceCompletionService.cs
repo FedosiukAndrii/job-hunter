@@ -29,7 +29,7 @@ internal sealed partial class RunOnceCompletionService(
             summary.FailedCount,
             summary.ObservedCount,
             summary.NotificationIntentCount,
-            summary.AiFallbackCount);
+            summary.DeferredAiAnalysisCount);
         applicationLifetime.StopApplication();
     }
 
@@ -61,7 +61,7 @@ internal sealed partial class RunOnceCompletionService(
     [LoggerMessage(
         EventId = 24,
         Level = LogLevel.Information,
-        Message = "One-time source scan completed: source={Source}, succeeded={SucceededCount}, partial={PartialCount}, blocked={BlockedCount}, failed={FailedCount}, observed={ObservedCount}, intents={NotificationIntentCount}, aiFallbacks={AiFallbackCount}.")]
+        Message = "One-time source scan completed: source={Source}, succeeded={SucceededCount}, partial={PartialCount}, blocked={BlockedCount}, failed={FailedCount}, observed={ObservedCount}, intents={NotificationIntentCount}, deferredAi={DeferredAiAnalysisCount}.")]
     private partial void RunCompleted(
         string source,
         int succeededCount,
@@ -70,5 +70,5 @@ internal sealed partial class RunOnceCompletionService(
         int failedCount,
         int observedCount,
         int notificationIntentCount,
-        int aiFallbackCount);
+        int deferredAiAnalysisCount);
 }

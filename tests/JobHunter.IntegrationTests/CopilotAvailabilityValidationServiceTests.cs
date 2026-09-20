@@ -17,9 +17,7 @@ public sealed class CopilotAvailabilityValidationServiceTests
                 false,
                 "CopilotModelUnavailable",
                 "gpt-5.6-luna"));
-        var service = CreateService(
-            analyzer,
-            failStartupWhenModelUnavailable: true);
+            var service = CreateService(analyzer);
 
         var exception = await Assert.ThrowsAsync<CopilotModelAvailabilityException>(
             () => service.StartAsync(CancellationToken.None));
@@ -30,25 +28,7 @@ public sealed class CopilotAvailabilityValidationServiceTests
     }
 
     [Fact]
-    public async Task RetainsRulesOnlyFallbackWhenStrictModeIsDisabled()
-    {
-        var analyzer = new StubAnalyzer(
-            isEnabled: true,
-            new JobAnalyzerAvailability(
-                false,
-                "CopilotModelUnavailable",
-                "gpt-5.6-luna"));
-        var service = CreateService(
-            analyzer,
-            failStartupWhenModelUnavailable: false);
-
-        await service.StartAsync(CancellationToken.None);
-
-        Assert.Equal(1, analyzer.AvailabilityCheckCount);
-    }
-
-    [Fact]
-    public async Task DoesNotProbeWhenAiIsDisabled()
+    public async Task StopsStartupWhenAnalyzerIsDisabled()
     {
         var analyzer = new StubAnalyzer(
             isEnabled: false,
@@ -56,25 +36,22 @@ public sealed class CopilotAvailabilityValidationServiceTests
                 false,
                 "NotUsed",
                 null));
-        var service = CreateService(
-            analyzer,
-            failStartupWhenModelUnavailable: true);
+        var service = CreateService(analyzer);
 
-        await service.StartAsync(CancellationToken.None);
+        var exception = await Assert.ThrowsAsync<CopilotModelAvailabilityException>(
+            () => service.StartAsync(CancellationToken.None));
 
+        Assert.Contains("AiDisabled", exception.Message, StringComparison.Ordinal);
         Assert.Equal(0, analyzer.AvailabilityCheckCount);
     }
 
-    private static CopilotAvailabilityValidationService CreateService(
-        StubAnalyzer analyzer,
-        bool failStartupWhenModelUnavailable) =>
+    private static CopilotAvailabilityValidationService CreateService(StubAnalyzer analyzer) =>
         new(
             analyzer,
             Options.Create(
                 new CopilotOptions
                 {
-                    Model = "gpt-5.6-luna",
-                    FailStartupWhenModelUnavailable = failStartupWhenModelUnavailable
+                    Model = "gpt-5.6-luna"
                 }),
             NullLogger<CopilotAvailabilityValidationService>.Instance);
 

@@ -14,7 +14,10 @@ internal sealed partial class CopilotAvailabilityValidationService(
     {
         if (!jobAnalyzer.Capabilities.IsEnabled)
         {
-            return;
+            throw new CopilotModelAvailabilityException(
+                jobAnalyzer.Capabilities.Provider,
+                ConfiguredModel,
+                "AiDisabled");
         }
 
         var availability = await jobAnalyzer.CheckAvailabilityAsync(cancellationToken);
@@ -29,15 +32,11 @@ internal sealed partial class CopilotAvailabilityValidationService(
         ModelCheckFailed(
             jobAnalyzer.Capabilities.Provider,
             availability.Model ?? ConfiguredModel,
-            availability.StatusCode,
-            copilotOptions.Value.FailStartupWhenModelUnavailable);
-        if (copilotOptions.Value.FailStartupWhenModelUnavailable)
-        {
-            throw new CopilotModelAvailabilityException(
-                jobAnalyzer.Capabilities.Provider,
-                availability.Model ?? ConfiguredModel,
-                availability.StatusCode);
-        }
+            availability.StatusCode);
+        throw new CopilotModelAvailabilityException(
+            jobAnalyzer.Capabilities.Provider,
+            availability.Model ?? ConfiguredModel,
+            availability.StatusCode);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -55,12 +54,11 @@ internal sealed partial class CopilotAvailabilityValidationService(
     [LoggerMessage(
         EventId = 40,
         Level = LogLevel.Warning,
-        Message = "Copilot startup model check failed: provider={Provider}, model={Model}, status={StatusCode}, failStartup={FailStartup}.")]
+        Message = "Copilot startup model check failed: provider={Provider}, model={Model}, status={StatusCode}.")]
     private partial void ModelCheckFailed(
         string provider,
         string model,
-        string statusCode,
-        bool failStartup);
+        string statusCode);
 }
 
 internal sealed class CopilotModelAvailabilityException(
@@ -69,7 +67,6 @@ internal sealed class CopilotModelAvailabilityException(
     string statusCode)
     : Exception(
         $"AI provider '{provider}' cannot start with model '{model}' ({statusCode}). "
-        + "Select a supported model explicitly, for example AI:Copilot:Model=auto, "
-        + "or set AI:Copilot:FailStartupWhenModelUnavailable=false to use rules-only fallback.")
+        + "Configure a supported model explicitly, for example AI:Copilot:Model=auto.")
 {
 }

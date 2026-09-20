@@ -37,12 +37,6 @@ public static class TelegramMessageRenderer
         }
 
         var finalScore = Math.Clamp(notification.Score, 0, 100);
-        var usedAi = notification.UsedAi
-            || string.Equals(
-                notification.ScoreMode,
-                "rules-and-ai",
-                StringComparison.OrdinalIgnoreCase);
-        var scoreMode = usedAi ? Template.ScoreModeAi : Template.ScoreModeRules;
         var title = EncodeBounded(
             Redact(Require(notification.Title, nameof(notification.Title))),
             240);
@@ -59,7 +53,6 @@ public static class TelegramMessageRenderer
                 Template.Header,
                 ("indicator", GetMatchIndicator(finalScore)),
                 ("score", finalScore.ToString(CultureInfo.InvariantCulture)),
-                ("scoreMode", scoreMode),
                 ("title", title),
                 ("company", company),
                 ("location", location)));
@@ -94,7 +87,7 @@ public static class TelegramMessageRenderer
                 footer);
         }
 
-        if (usedAi && !string.IsNullOrWhiteSpace(notification.AiSummary))
+        if (!string.IsNullOrWhiteSpace(notification.AiSummary))
         {
             var summary = EncodeBounded(Redact(notification.AiSummary), 420);
             AppendIfFits(
@@ -109,7 +102,7 @@ public static class TelegramMessageRenderer
                 builder,
                 Template.Format(
                     Template.DebugBlock,
-                    ("debug", FormatDebug(notification, finalScore, scoreMode))),
+                    ("debug", FormatDebug(notification, finalScore))),
                 footer);
         }
 
@@ -301,32 +294,16 @@ public static class TelegramMessageRenderer
 
     private static string FormatDebug(
         JobNotification notification,
-        int finalScore,
-        string scoreMode)
+        int finalScore)
     {
-        var deterministicScore = Math.Clamp(
-            notification.DeterministicScore ?? notification.Score,
-            0,
-            100);
-        var strongest = string.IsNullOrWhiteSpace(notification.StrongestCriterion)
-            ? Template.NotAvailable
-            : EncodeBounded(Redact(notification.StrongestCriterion), 120);
-        var missingFields = NormalizeValues(notification.MissingFields, 16);
-        var missing = missingFields.Count == 0
-            ? Template.None
-            : EncodeBounded(Redact(string.Join(", ", missingFields)), 300);
         var hardFilterResult = notification.PassedHardFilters is null
             ? Template.NotAvailable
             : notification.PassedHardFilters.Value ? Template.Passed : Template.Failed;
 
         return Template.Format(
             Template.Debug,
-            ("deterministicScore", deterministicScore.ToString(CultureInfo.InvariantCulture)),
             ("finalScore", finalScore.ToString(CultureInfo.InvariantCulture)),
-            ("strongestCriterion", strongest),
-            ("missingFields", missing),
             ("hardFilterResult", hardFilterResult),
-            ("scoreMode", scoreMode),
             ("aiUsage", FormatAiRequestUsage(notification)));
     }
 

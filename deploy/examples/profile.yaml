@@ -1,49 +1,18 @@
-schemaVersion: 1
+schemaVersion: 2
 targetTitles:
-  - Backend Engineer
-  - .NET Developer
-skills:
-  - name: .NET
-    category: core
-    required: true
-    yearsExperience: 5
-    aliases:
-      - dotnet
-    evidence:
-      - Built production web APIs
-  - name: C#
-    category: core
-    required: true
-  - name: PostgreSQL
-    category: related
-rolePreferences:
-  seniorities:
-    - Senior
+  - Senior .NET Backend Developer
+  - Senior Backend Developer
+  - Senior .NET Developer
+requiredSkills:
+  - .NET
+  - C#
+hardFilters:
   locations:
     - Ukraine
   remotePolicy: remoteOnly
-  employmentTypes:
-    - fullTime
-languages:
-  - name: English
-    minimumLevel: B2
-preferredDomains:
-  - FinTech
-salary:
-  minimum: 4000
-  currency: USD
-  period: month
-excludedEmployers: []
-excludedKeywords:
-  - unpaid
-scoring:
-  rulesOnlyThreshold: 72
-  rulesAndAiThreshold: 75
-  weights:
-    coreSkills: 30
-    seniority: 15
-    relatedStack: 15
-    roleResponsibilities: 15
-    locationLanguage: 10
-    domain: 10
-    compensation: 5
+  excludedKeywords:
+    - unpaid
+aiPreferences:
+  - Prefer backend-focused roles. Treat required frontend experience as a concern for Full Stack positions, but allow it when optional or nice to have.
+  - Compare seniority, language, compensation, domain, and remaining stack requirements with the supplemental CV.
+supplementalCvPath: cv.md

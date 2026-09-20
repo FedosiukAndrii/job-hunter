@@ -24,7 +24,6 @@ public sealed class EfNotificationOutboxStoreTests
               "locations":["Remote"],
               "workplaceMode":1,
               "score":90,
-              "scoreMode":"rules-only",
               "summary":"Legacy summary.",
               "compensationMinimum":5000,
               "compensationMaximum":6000,
@@ -50,10 +49,8 @@ public sealed class EfNotificationOutboxStoreTests
             .TryLeaseNextAsync(now, TimeSpan.FromMinutes(1), CancellationToken.None);
 
         Assert.NotNull(lease);
-        Assert.False(lease.Payload.UsedAi);
         Assert.Empty(lease.Payload.Strengths);
         Assert.Empty(lease.Payload.Concerns);
-        Assert.Empty(lease.Payload.MissingFields);
     }
 
     [Fact]
@@ -379,7 +376,6 @@ public sealed class EfNotificationOutboxStoreTests
                 ["Remote"],
                 WorkplaceMode.Remote,
                 90,
-                "rules-only",
                 5_000,
                 6_000,
                 "USD",

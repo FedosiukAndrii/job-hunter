@@ -14,8 +14,7 @@ internal sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         {
             failures.Add("AI:Provider must contain between 1 and 64 characters.");
         }
-        else if (options.Enabled
-            && !string.Equals(
+        else if (!string.Equals(
                 options.Provider.Trim(),
                 CopilotOptions.ProviderName,
                 StringComparison.OrdinalIgnoreCase))
@@ -33,6 +32,11 @@ internal sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         if (options.MinimumConfidence is < 0 or > 1)
         {
             failures.Add("AI:MinimumConfidence must be between 0 and 1.");
+        }
+
+        if (options.MinimumFitScore is < 0 or > 100)
+        {
+            failures.Add("AI:MinimumFitScore must be between 0 and 100.");
         }
 
         if (options.TransientFailureRetryMinutes is < 1 or > 1440)

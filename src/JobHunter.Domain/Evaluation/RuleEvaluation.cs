@@ -22,17 +22,7 @@ public sealed class RuleEvaluation
 
     public bool PassedHardFilters { get; private set; }
 
-    public int Score { get; private set; }
-
-    public int RulesOnlyThreshold { get; private set; }
-
-    public int RulesAndAiThreshold { get; private set; }
-
     public string RuleResultsJson { get; private set; } = "[]";
-
-    public string EvidenceJson { get; private set; } = "[]";
-
-    public string MissingDataJson { get; private set; } = "[]";
 
     public string Explanation { get; private set; } = string.Empty;
 
@@ -44,12 +34,7 @@ public sealed class RuleEvaluation
         int jobRevisionNumber,
         string rubricVersion,
         bool passedHardFilters,
-        JobScore score,
-        int rulesOnlyThreshold,
-        int rulesAndAiThreshold,
         string ruleResultsJson,
-        string evidenceJson,
-        string missingDataJson,
         string explanation,
         DateTimeOffset now) =>
         new()
@@ -60,12 +45,7 @@ public sealed class RuleEvaluation
             JobRevisionNumber = jobRevisionNumber,
             RubricVersion = rubricVersion,
             PassedHardFilters = passedHardFilters,
-            Score = score.Value,
-            RulesOnlyThreshold = rulesOnlyThreshold,
-            RulesAndAiThreshold = rulesAndAiThreshold,
             RuleResultsJson = ruleResultsJson,
-            EvidenceJson = evidenceJson,
-            MissingDataJson = missingDataJson,
             Explanation = explanation,
             EvaluatedAtUtc = now
         };

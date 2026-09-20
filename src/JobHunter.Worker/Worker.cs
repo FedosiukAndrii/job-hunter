@@ -37,7 +37,7 @@ public sealed partial class Worker(
                             summary.SuppressedNotificationIntentCount,
                             summary.AiAnalysisCount,
                             summary.AcceptedAiAnalysisCount,
-                            summary.AiFallbackCount);
+                            summary.DeferredAiAnalysisCount);
                     }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -72,7 +72,7 @@ public sealed partial class Worker(
     [LoggerMessage(
         EventId = 2,
         Level = LogLevel.Information,
-        Message = "Scheduler tick completed: due={DueCount}, started={StartedCount}, succeeded={SucceededCount}, partial={PartialCount}, blocked={BlockedCount}, failed={FailedCount}, observed={ObservedCount}, intents={NotificationIntentCount}, suppressedIntents={SuppressedNotificationIntentCount}, aiAnalyses={AiAnalysisCount}, acceptedAi={AcceptedAiAnalysisCount}, aiFallbacks={AiFallbackCount}.")]
+        Message = "Scheduler tick completed: due={DueCount}, started={StartedCount}, succeeded={SucceededCount}, partial={PartialCount}, blocked={BlockedCount}, failed={FailedCount}, observed={ObservedCount}, intents={NotificationIntentCount}, suppressedIntents={SuppressedNotificationIntentCount}, aiAnalyses={AiAnalysisCount}, acceptedAi={AcceptedAiAnalysisCount}, deferredAi={DeferredAiAnalysisCount}.")]
     private partial void SchedulerTickCompleted(
         int dueCount,
         int startedCount,
@@ -85,7 +85,7 @@ public sealed partial class Worker(
         int suppressedNotificationIntentCount,
         int aiAnalysisCount,
         int acceptedAiAnalysisCount,
-        int aiFallbackCount);
+        int deferredAiAnalysisCount);
 
     [LoggerMessage(
         EventId = 3,

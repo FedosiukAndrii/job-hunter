@@ -1,13 +1,11 @@
 {
-  "Header": "{{indicator}} {{score}}% · {{scoreMode}}\n\n<b>{{title}}</b>\n🏢 {{company}}\n📍 {{location}}",
+  "Header": "{{indicator}} {{score}}% · ✨ AI\n\n<b>{{title}}</b>\n🏢 {{company}}\n📍 {{location}}",
   "Footer": "\n\n🔗 <a href=\"{{url}}\">Open vacancy</a>",
   "CompensationBlock": "\n💰 {{compensation}}",
   "AgeBlock": "\n🕒 {{age}}",
   "InsightsBlock": "\n\n{{insights}}",
   "AiSummaryBlock": "\n\n✨ {{summary}}",
   "DebugBlock": "\n\n{{debug}}",
-  "ScoreModeAi": "✨ AI",
-  "ScoreModeRules": "⚙️ Rules",
   "MatchHigh": "🟢",
   "MatchMedium": "🟡",
   "MatchLow": "🟠",
@@ -45,5 +43,5 @@
   "AiUsageCreditsUnavailable": "cost unavailable",
   "AiUsage": "{{calls}}; {{tokens}}; {{credits}}",
   "UnknownValue": "?",
-  "Debug": "<b>Debug</b>\n⚙️ Rules score: {{deterministicScore}}%\n🎯 Final score: {{finalScore}}%\n🏆 Strongest criterion: {{strongestCriterion}}\n🧩 Missing fields: {{missingFields}}\n🛡 Hard filters: {{hardFilterResult}}\n🧮 Scoring method: {{scoreMode}}\n💳 AI request: {{aiUsage}}"
+  "Debug": "<b>Debug</b>\n🎯 AI fit score: {{finalScore}}%\n🛡 Hard filters: {{hardFilterResult}}\n💳 AI request: {{aiUsage}}"
 }

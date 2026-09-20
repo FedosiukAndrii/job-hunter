@@ -32,7 +32,6 @@ public sealed record JobNotification(
     IReadOnlyList<string> Locations,
     WorkplaceMode WorkplaceMode,
     int Score,
-    string ScoreMode,
     decimal? CompensationMinimum,
     decimal? CompensationMaximum,
     string? CompensationCurrency,
@@ -40,21 +39,13 @@ public sealed record JobNotification(
     DateTimeOffset? PublishedAtUtc,
     string CanonicalUrl)
 {
-    public bool UsedAi { get; init; }
-
     public string? AiSummary { get; init; }
 
     public IReadOnlyList<string> Strengths { get; init; } = [];
 
     public IReadOnlyList<string> Concerns { get; init; } = [];
 
-    public int? DeterministicScore { get; init; }
-
     public bool? PassedHardFilters { get; init; }
-
-    public string? StrongestCriterion { get; init; }
-
-    public IReadOnlyList<string> MissingFields { get; init; } = [];
 
     public long? AiInputTokens { get; init; }
 

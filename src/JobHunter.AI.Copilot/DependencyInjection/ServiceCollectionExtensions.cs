@@ -28,7 +28,6 @@ public static class ServiceCollectionExtensions
             IValidateOptions<CopilotOptions>,
             CopilotOptionsValidator>();
 
-        services.AddSingleton<NullJobAnalyzer>();
         services.AddSingleton<ICopilotSessionRunner, CopilotSessionRunner>();
         services.AddSingleton(
             serviceProvider => new CopilotJobAnalyzer(
@@ -36,16 +35,7 @@ public static class ServiceCollectionExtensions
                 serviceProvider.GetRequiredService<IOptions<CopilotOptions>>()));
         services.AddSingleton<IJobAnalyzer>(
             serviceProvider =>
-            {
-                var aiOptions =
-                    serviceProvider.GetRequiredService<IOptions<AiOptions>>().Value;
-                var disabled =
-                    serviceProvider.GetRequiredService<NullJobAnalyzer>();
-                var selector = new JobAnalyzerSelector(
-                    [serviceProvider.GetRequiredService<CopilotJobAnalyzer>()],
-                    disabled);
-                return selector.Select(aiOptions.Enabled, aiOptions.Provider);
-            });
+                serviceProvider.GetRequiredService<CopilotJobAnalyzer>());
 
         return services;
     }

@@ -6,7 +6,7 @@
 
 ## 1. Delivery principles
 
-1. Build a usable DOU + rules + Telegram path before optional AI or LinkedIn.
+1. Build a usable DOU + hard filters + mandatory Copilot + Telegram path before LinkedIn.
 2. Keep the .NET Worker as the sole owner and writer of SQLite.
 3. Use contract boundaries for unstable/external systems: DOU, JobSpy, Copilot,
    Telegram, filesystem/secrets, and time.
@@ -67,7 +67,7 @@ deploy/
 
 | Spike | Work | Exit criterion |
 |---|---|---|
-| Copilot native host | Create a disposable .NET 10 native-host test using `GitHub.Copilot.SDK`; authenticate using a supported interactive/deployable method; start a constrained session and validate structured tool output | Works after process restart without an OpenAI API key, or a documented blocker produces a rules-only MVP decision |
+| Copilot native host | Create a disposable .NET 10 native-host test using `GitHub.Copilot.SDK`; authenticate using a supported interactive/deployable method; start a constrained session and validate structured tool output | Works after process restart with the required authenticated model |
 | Copilot tool lockdown | Verify permission handler denies filesystem, shell, browser, network, MCP, and arbitrary custom tool access; expose only `submit_job_analysis` | Adversarial prompt cannot cause a tool action |
 | JobSpy boundary | Pin package/environment; wrap one request into FastAPI JSON response; simulate normal, partial, 403/429, timeout, malformed result | .NET can distinguish `Succeeded`, `Partial`, `Blocked`, `Failed` |
 | DOU parser | Capture permitted, minimized RSS fixtures, parse dates/link/GUID/escaped HTML | No live source required for parser tests |
@@ -75,8 +75,7 @@ deploy/
 | Compose optionality | Start/restart the optional Compose profile against a named volume | No data loss after recreation; native behavior is unaffected |
 
 **Decision gate:** If Copilot cannot authenticate safely in the target deployment,
-ship MVP with `IJobAnalyzer` and the adapter disabled. Do not delay DOU/rules/
-Telegram work or introduce an unsupported credential workaround.
+block release validation. Do not introduce an unsupported credential workaround.
 
 ### WP-01: Solution and operational foundation
 
@@ -137,26 +136,28 @@ idempotency, lease-recovery, and maintenance tests.
 
 ### WP-03: Profile and deterministic evaluation
 
-**Status:** Implemented with candidate-profile schema version `1` and
-deterministic rubric version `rules-v1`.
+**Status:** Implemented with compact candidate-profile schema version `2`,
+hard-filter rubric `hard-filters-v1`, and fixed AI policy `ai-fit-v1`.
 
 **Deliverables**
 
 - YAML and JSON schema for `CandidateProfile`.
 - Configurable profile file discovery path, with an optional Compose mount path.
 - Markdown supplemental CV loader with size cap and contact-data redaction.
+- Bounded AI preferences passed as explicitly labelled semantic evidence; they
+  do not bypass deterministic hard filters.
 - Validation errors with field path and remediation hint.
 - Hard-filter engine with explicit rule/result/reason/evidence ID.
-- Versioned deterministic rubric and configurable thresholds.
+- Application-owned `overallFit` AI rubric and `AI:MinimumFitScore` threshold.
 - `RuleEvaluation` persistence and human-readable, privacy-safe explanation.
 
 **Tests**
 
 - Invalid YAML/JSON is rejected at startup or profile reload with useful error.
 - Rules do not infer data that is absent.
-- Required skills, exclusions, remote policy, location, salary, and score
-  calculations are deterministic.
-- Profile/rubric change produces a new versioned evaluation rather than mutating
+- Required skills, exclusions, remote policy, and location filters are
+  deterministic and do not infer absent data.
+- Profile/AI-policy change produces a new versioned evaluation rather than mutating
   historical result.
 
 ### WP-04: DOU adapter
@@ -230,9 +231,9 @@ until the DOU -> rules -> Telegram core flow passes end to end.
 ### WP-06: Scoring pipeline orchestration
 
 **Status:** Implemented with persisted scheduling, source-run leases, bounded
-fetch concurrency, serialized SQLite writes, rules/optional-AI evaluation, and
+fetch concurrency, serialized SQLite writes, hard-filter/mandatory-AI evaluation, and
 durable notification intent. Integration tests cover overlapping ticks,
-repeated polling, partial runs, AI-disabled operation, revision re-evaluation,
+repeated polling, partial runs, AI-failure notification deferral, revision re-evaluation,
 one-notification-per-job behavior, long-running lease renewal, cancellation
 release, and disabled-source recovery.
 
@@ -240,7 +241,7 @@ release, and disabled-source recovery.
 
 - `ScanOrchestrator` checks due source subscriptions using persisted times.
 - Bounded source fetch concurrency and serialized/short persistence writes.
-- Normalization -> deduplication -> hard filter -> rules score -> optional AI ->
+- Normalization -> deduplication -> hard filter -> mandatory AI ->
   notification decision pipeline.
 - Idempotent work item identifiers and durable step result/status.
 - No repeat notification for an unchanged previously-sent qualifying job.
@@ -250,16 +251,16 @@ release, and disabled-source recovery.
 
 - Multiple scheduler ticks cannot process one subscription simultaneously.
 - A job stored before crash resumes without a duplicate record.
-- AI-disabled path reaches notification decision normally.
+- An unavailable analysis never creates a notification intent; transient results retry.
 - Partial source run never marks absent jobs removed.
 
 ### WP-07: AI abstraction and Copilot adapter
 
-**Status:** Implemented behind provider-neutral contracts with Copilot disabled
-by default. Structured results, evidence references, redaction, local
+**Status:** Implemented behind provider-neutral contracts with Copilot required
+at startup. Structured results, evidence references, redaction, local
 validation, bounded queue/concurrency/time/input/output, one corrective retry
-for locally invalid structured output, transient retry, and rules-only fallback
-are covered by deterministic tests. A live authenticated
+for locally invalid structured output, and notification deferral on unavailable
+analysis are covered by deterministic tests. A live authenticated
 Copilot smoke test remains a release validation task.
 
 **Deliverables**
@@ -277,7 +278,7 @@ Copilot smoke test remains a release validation task.
 - AI queue/backpressure, a small transient retry budget plus one
   validator-specific corrective retry for invalid structured output, failure
   classification, telemetry, and optional session credit cap.
-- `NullJobAnalyzer` / disabled provider behavior.
+- Startup failure when no enabled analyzer/model is available.
 
 **Critical validation**
 
@@ -484,10 +485,9 @@ readiness.
 - [ ] Dependency versions and licenses reviewed.
 - [x] Default source configuration enables DOU only.
 - [x] JobSpy/LinkedIn cannot run without both enablement and risk acknowledgement.
-- [x] AI is disabled by default and no OpenAI key is required.
-- [x] AI-disabled pipeline has an end-to-end passing test.
-- [ ] Copilot adapter has passing native Windows/macOS smoke coverage or is
-      explicitly disabled with documented rules-only fallback.
+- [x] Copilot is required by the Worker configuration and unavailable analysis
+  defers notification without losing persisted jobs.
+- [ ] Copilot adapter has passing native Windows/macOS authenticated smoke coverage.
 - [ ] Telegram test destination is distinct from a personal production chat.
 - [x] Database survives native process restart and backup/restore is covered by
       integration tests. Compose volume validation is deferred with the Worker
@@ -509,9 +509,9 @@ The remaining decisions must be made only when their relevant phase begins:
 
 Resolved during WP-03/WP-04:
 
-- Candidate profiles use schema version `1`; the default `rules-v1` weights are
-  core skills 30, seniority 15, related stack 15, role responsibilities 15,
-  location/language 10, domain 10, and compensation 5.
+- Candidate profiles use compact schema version `2`; application-owned
+  `ai-fit-v1` exposes one `overallFit` criterion and uses
+  `AI:MinimumFitScore` for notification qualification.
 - DOU detail-page enrichment is optional and disabled by default. RSS remains
   the primary low-rate discovery path.
 
@@ -520,22 +520,21 @@ Resolved during WP-07/WP-09:
 - Native Copilot authentication uses either the SDK's supported logged-in-user
   path or the optional `AI:Copilot:GitHubToken` secret. Compose support remains
   deferred with Worker container packaging.
-- The checked-in Copilot configuration requests `gpt-5.6-luna` and enables
-  `FailStartupWhenModelUnavailable`. Before `run` or `run-once` scans, the
+- The checked-in Copilot configuration requests `gpt-5.6-luna`. Before `run` or
+  `run-once` scans, the
   worker validates the configured model against the authenticated catalogue and
   creates a restricted no-tool session to confirm actual acceptance, including
   when the SDK exposes its known limited `auto`-only catalogue. An unavailable
   model stops the command; an operator may explicitly choose
-  `AI:Copilot:Model=auto` or disable strict startup validation to retain
-  rules-only fallback. Prompt prose is a versioned embedded template, while
+  `AI:Copilot:Model=auto`. Prompt prose is a versioned embedded template, while
   code continues to enforce its tool and evidence boundaries.
 - The default AI guardrails are 48,000 input characters, 4,000 output
   characters, a 60-second deadline, concurrency `1`, and queue capacity `32`.
-- AI confidence below `0.65` is persisted as insufficient confidence and falls
-  back to rules-only scoring. Accepted AI uses an equal-weight rules/AI score
-  against `rulesAndAiThreshold`; transient results may retry after 60 minutes.
-  A locally invalid structured response gets at most one in-session corrective
-  retry in a fresh restricted session before the same conservative fallback.
+- AI confidence below `0.65` is persisted as insufficient confidence and creates
+  no notification intent. Accepted analysis uses its `overallFit` score against
+  `AI:MinimumFitScore`; transient results may retry after 60 minutes. A locally
+  invalid structured response gets at most one in-session corrective retry in a
+  fresh restricted session before notification is deferred.
 - The stable Copilot SDK does not expose a supported per-session credit cap.
   The adapter instead allows one terminal submission tool and enforces the
   documented time, size, concurrency, queue, and retry bounds.

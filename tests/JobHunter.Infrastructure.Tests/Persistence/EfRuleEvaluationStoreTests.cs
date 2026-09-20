@@ -30,27 +30,15 @@ public sealed class EfRuleEvaluationStoreTests
         var evaluation = new DeterministicEvaluation(
             DeterministicJobEvaluator.RubricVersion,
             true,
-            new JobScore(80),
-            72,
-            75,
             [
                 new HardFilterResult(
-                    "required-skills",
+                    "required-skill",
                     RuleOutcome.Passed,
                     null,
-                    ["job:skill:dotnet"],
+                    ["profile:required-skills"],
                     "Required skill was found.")
             ],
-            [
-                new CriterionEvaluation(
-                    "coreSkills",
-                    24,
-                    30,
-                    ["job:skill:dotnet", "profile:skill:dotnet"],
-                    true)
-            ],
-            ["job:skill:csharp"],
-            "Hard filters passed. Deterministic score: 80/100.");
+            "Hard filters passed. AI evaluation is required for qualification.");
 
         var firstId = await evaluationStore.SaveAsync(
             jobId,
@@ -83,16 +71,12 @@ public sealed class EfRuleEvaluationStoreTests
 
         var persisted = await context.RuleEvaluations.SingleAsync(
             candidate => candidate.Id == firstId);
-        using var criteria = JsonDocument.Parse(persisted.EvidenceJson);
-        var criterion = Assert.Single(criteria.RootElement.EnumerateArray());
-        Assert.Equal("coreSkills", criterion.GetProperty("criterionId").GetString());
-        Assert.Equal(24, criterion.GetProperty("awardedPoints").GetInt32());
-        Assert.Equal(30, criterion.GetProperty("maximumPoints").GetInt32());
-        Assert.True(criterion.GetProperty("hasMissingData").GetBoolean());
-        var evidenceIds = criterion.GetProperty("evidenceIds").EnumerateArray().ToArray();
-        Assert.Equal(2, evidenceIds.Length);
-        Assert.Equal("job:skill:dotnet", evidenceIds[0].GetString());
-        Assert.Equal("profile:skill:dotnet", evidenceIds[1].GetString());
+        using var ruleResults = JsonDocument.Parse(persisted.RuleResultsJson);
+        var hardFilter = Assert.Single(ruleResults.RootElement.EnumerateArray());
+        Assert.Equal("required-skill", hardFilter.GetProperty("ruleId").GetString());
+        Assert.Equal(
+            "Hard filters passed. AI evaluation is required for qualification.",
+            persisted.Explanation);
     }
 
     private static LoadedCandidateProfile ProfileDocument(string hash) =>
@@ -100,7 +84,7 @@ public sealed class EfRuleEvaluationStoreTests
             new CandidateProfile
             {
                 TargetTitles = ["Backend Engineer"],
-                Skills = [new CandidateSkill { Name = ".NET", Required = true }]
+                RequiredSkills = [".NET"]
             },
             "{}",
             hash,

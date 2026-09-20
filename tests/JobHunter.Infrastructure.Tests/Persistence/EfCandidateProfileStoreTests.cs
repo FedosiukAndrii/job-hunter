@@ -15,7 +15,7 @@ public sealed class EfCandidateProfileStoreTests
         var profile = new CandidateProfile
         {
             TargetTitles = ["Backend Engineer"],
-            Skills = [new CandidateSkill { Name = ".NET", Required = true }]
+            RequiredSkills = [".NET"]
         };
         var firstDocument = new LoadedCandidateProfile(
             profile,

@@ -1,8 +1,7 @@
 # Job Hunter
 
 Local, cross-platform .NET service that discovers .NET vacancies, ranks them
-against a personal profile, optionally analyses them with AI, and sends relevant
-results to Telegram.
+against a personal profile with Copilot, and sends relevant results to Telegram.
 
 The implementation contract is:
 
@@ -15,7 +14,7 @@ The implementation contract is:
 
 ```text
 DOU RSS ─────────┐
-                 ├─> .NET Worker -> SQLite -> rules -> optional AI -> Telegram
+                 ├─> .NET Worker -> SQLite -> hard filters -> Copilot -> Telegram
 JobSpy API opt-in ┘
 ```
 
@@ -34,17 +33,20 @@ Implementation is in progress. WP-01 through the core WP-08 path now provide:
   single-instance guard, SQLite migration protocol, and native data paths;
 - the full versioned domain/persistence model, idempotent ingestion, source-run
   leases, and backup/restore/integrity-check services;
-- YAML/JSON candidate profiles, bounded and redacted supplemental CV loading,
-  hard filters, and deterministic `rules-v1` scoring;
+- compact YAML/JSON candidate profiles, bounded and redacted supplemental CV
+  loading, explicit hard filters, bounded AI preferences, and fixed `overallFit`
+  semantic evaluation;
 - a bounded DOU RSS adapter with safe XML/HTML handling, conditional requests,
   retries, canonical URLs, fixture tests, and optional detail enrichment;
 - an isolated, opt-in JobSpy/FastAPI service plus a loopback-only .NET adapter
   with explicit blocked/degraded states and no access-control evasion;
-- persisted source scheduling, bounded orchestration, deterministic scoring,
+- persisted source scheduling, bounded orchestration, mandatory Copilot fit
+  scoring after explicit hard filters,
   continuously renewed run leases, durable notification intent, and idempotent
   cancellation/restart behavior;
-- an optional constrained Copilot analyzer with provider-neutral contracts,
-  local schema/evidence validation, confidence fallback, and no ambient tools;
+- a required constrained Copilot analyzer with provider-neutral contracts,
+  local schema/evidence validation, notification deferral on failed analysis,
+  and no ambient tools;
 - a durable Telegram outbox with safe HTML rendering, bounded retries,
   restart-safe destination-wide rate-limit backoff for existing and newly
   enqueued notifications, unknown-send handling, destination disabling, and
@@ -93,6 +95,7 @@ Copy and customize the safe example profile, then start the Worker host:
 ```powershell
 Copy-Item deploy\examples\profile.yaml C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- doctor --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
+dotnet run --project src\JobHunter.Worker -- show-profile --Profile:FilePath C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- run-once --source dou --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
 dotnet run --project src\JobHunter.Worker -- run --Storage:DataDirectory C:\JobHunterData --Profile:FilePath C:\JobHunterData\profile.yaml
 ```
@@ -102,6 +105,11 @@ durable outbox. `run-once` forces one enabled, non-blocked source scan regardles
 of its next scheduled time, but does not start the continuous Telegram
 dispatcher. It returns a nonzero exit code unless every selected subscription
 completes successfully.
+
+`show-profile` prints the canonical structured profile, including AI preferences,
+and the contact-redacted supplemental Markdown CV used as AI evidence. Preferences
+do not bypass deterministic hard filters. Treat its console output as private
+candidate data.
 
 Database maintenance commands require absolute output paths and never overwrite
 an existing restore destination. Put backups only in an operator-selected,
@@ -113,8 +121,9 @@ dotnet run --project src\JobHunter.Worker -- integrity-check
 dotnet run --project src\JobHunter.Worker -- restore --input C:\JobHunterBackups\job-hunter.db --output C:\JobHunterRestore\job-hunter.db
 ```
 
-No Telegram, AI, Python, or Docker dependency is needed for native DOU
-discovery, persistence, and rules scoring. See the
+No Telegram, Python, or Docker dependency is needed for native source discovery
+and persistence. A working Copilot model is required for `run` and `run-once`.
+See the
 [deployment guide](docs/DEPLOYMENT.md) for Telegram, User Secrets, Copilot,
 retention, and operator commands, and the
 [JobSpy sidecar guide](services/jobspy-api/README.md) for optional setup.

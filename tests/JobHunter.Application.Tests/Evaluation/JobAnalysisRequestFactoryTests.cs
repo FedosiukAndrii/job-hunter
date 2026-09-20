@@ -1,3 +1,4 @@
+using System.Text.Json;
 using JobHunter.AI.Abstractions;
 using JobHunter.Application.Evaluation;
 using JobHunter.Application.Persistence;
@@ -5,7 +6,6 @@ using JobHunter.Application.Profiles;
 using JobHunter.Application.Sources;
 using JobHunter.Domain.Jobs;
 using JobHunter.Domain.Sources;
-using System.Text.Json;
 
 namespace JobHunter.Application.Tests.Evaluation;
 
@@ -17,11 +17,16 @@ public sealed class JobAnalysisRequestFactoryTests
         var profile = new CandidateProfile
         {
             TargetTitles = ["Backend Engineer"],
-            Skills = [new CandidateSkill
+            RequiredSkills = [".NET", "C#"],
+            HardFilters = new HardFilters
             {
-                Name = ".NET",
-                Evidence = ["Contact profile@example.com for API work"]
-            }]
+                RemotePolicy = RemotePolicy.RemoteOrHybrid,
+                Locations = ["Ukraine"]
+            },
+            AiPreferences =
+            [
+                "Prefer backend-focused roles. Treat required frontend experience as a concern for Full Stack positions, but allow it when optional or nice to have."
+            ]
         };
         var loadedProfile = new LoadedCandidateProfile(
             profile,
@@ -63,14 +68,19 @@ public sealed class JobAnalysisRequestFactoryTests
         Assert.DoesNotContain(
             request.Evidence,
             fragment => fragment.Content.Contains(
-                "profile@example.com",
-                StringComparison.Ordinal));
-        Assert.DoesNotContain(
-            request.Evidence,
-            fragment => fragment.Content.Contains(
                 "job@example.com",
                 StringComparison.Ordinal));
         Assert.Contains("EvidenceTruncated", request.Warnings);
+        Assert.Equal(AiEvaluationPolicy.Version, request.RubricVersion);
+        var criterion = Assert.Single(request.Criteria);
+        Assert.Equal("overallFit", criterion.Id);
+        Assert.Equal(100, criterion.Weight);
+        Assert.Contains(
+            request.Evidence,
+            fragment => fragment.Id == "profile:ai-preferences"
+                && fragment.Content.Contains(
+                    "Treat required frontend experience as a concern",
+                    StringComparison.Ordinal));
         var jsonOptions = JobAnalysisJson.CreateSerializerOptions();
         Assert.True(
             request.Evidence.Sum(

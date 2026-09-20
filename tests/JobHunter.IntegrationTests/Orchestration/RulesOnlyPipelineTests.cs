@@ -16,7 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace JobHunter.IntegrationTests.Orchestration;
 
-public sealed class RulesOnlyPipelineTests
+public sealed class AiQualificationPipelineTests
 {
     [Fact]
     public async Task RepeatedPollPersistsOneJobEvaluationAndNotificationIntent()
@@ -274,7 +274,7 @@ public sealed class RulesOnlyPipelineTests
     }
 
     [Fact]
-    public async Task AcceptedAiAnalysisUsesCombinedThresholdAndIsReused()
+    public async Task AiAnalysisBelowFitThresholdIsRejectedAndReused()
     {
         var analyzer = new StubJobAnalyzer(
             request => new JobAnalysisResult(
@@ -302,7 +302,7 @@ public sealed class RulesOnlyPipelineTests
     }
 
     [Fact]
-    public async Task AiFailureIsPersistedAndFallsBackWithoutFailingSourceRun()
+    public async Task AiFailureIsPersistedAndDefersNotificationWithoutFailingSourceRun()
     {
         var analyzer = new StubJobAnalyzer(
             request => JobAnalysisResult.Failure(
@@ -321,8 +321,8 @@ public sealed class RulesOnlyPipelineTests
         Assert.True(
             summary.SucceededCount == 1,
             $"{sourceRun.ErrorCode}: {sourceRun.Diagnostic}");
-        Assert.Equal(1, summary.AiFallbackCount);
-        Assert.Equal(1, summary.NotificationIntentCount);
+        Assert.Equal(1, summary.DeferredAiAnalysisCount);
+        Assert.Equal(0, summary.NotificationIntentCount);
         var analysis = await context.AiAnalyses.SingleAsync();
         Assert.Equal(
             JobAnalysisStatus.TransientFailure.ToString(),
@@ -330,7 +330,7 @@ public sealed class RulesOnlyPipelineTests
     }
 
     [Fact]
-    public async Task LowConfidenceAiAnalysisIsPersistedAndFallsBackToRules()
+    public async Task LowConfidenceAiAnalysisIsPersistedAndDefersNotification()
     {
         var analyzer = new StubJobAnalyzer(
             request => new JobAnalysisResult(
@@ -348,8 +348,8 @@ public sealed class RulesOnlyPipelineTests
         var summary = await host.Orchestrator.RunDueAsync(CancellationToken.None);
 
         Assert.Equal(0, summary.AcceptedAiAnalysisCount);
-        Assert.Equal(1, summary.AiFallbackCount);
-        Assert.Equal(1, summary.NotificationIntentCount);
+        Assert.Equal(1, summary.DeferredAiAnalysisCount);
+        Assert.Equal(0, summary.NotificationIntentCount);
         Assert.Equal(1, analyzer.CallCount);
 
         await using var context = await host.CreateDbContextAsync();
@@ -462,7 +462,17 @@ public sealed class RulesOnlyPipelineTests
 
             services.AddSingleton<ICandidateProfileLoader>(new StubProfileLoader());
             services.AddSingleton<IJobAnalyzer>(
-                analyzer ?? new NullJobAnalyzer());
+                analyzer ?? new StubJobAnalyzer(
+                    request => new JobAnalysisResult(
+                        JobAnalysisStatus.Succeeded,
+                        "test-ai",
+                        "fixture-model",
+                        request.SchemaVersion,
+                        request.RubricVersion,
+                        new JobAnalysisOutput(82, 0.9, "Strong fit.", []),
+                        new JobAnalysisUsage(500, 100, 80, 20, null),
+                        [],
+                        null)));
             services.AddSingleton<IJobSource>(source);
             services.AddSingleton<IJobSourceSubscriptionProvider>(
                 new StubSubscriptionProvider(subscriptions));
@@ -666,15 +676,7 @@ public sealed class RulesOnlyPipelineTests
             var profile = new CandidateProfile
             {
                 TargetTitles = ["Backend Engineer"],
-                Skills =
-                [
-                    new CandidateSkill
-                    {
-                        Name = ".NET",
-                        Category = SkillCategory.Core,
-                        Required = true
-                    }
-                ]
+                RequiredSkills = [".NET"]
             };
             return Task.FromResult(
                 new LoadedCandidateProfile(

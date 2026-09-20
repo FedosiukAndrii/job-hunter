@@ -26,6 +26,9 @@ data/
 appsettings.Development.json
 secrets/
 
+# Private local candidate profile and supplemental CV
+User data/
+
 # Local project-status notes
 temp/
 

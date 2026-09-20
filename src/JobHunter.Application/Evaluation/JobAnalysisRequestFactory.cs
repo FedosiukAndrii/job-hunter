@@ -8,11 +8,20 @@ using JobHunter.Domain.Jobs;
 
 namespace JobHunter.Application.Evaluation;
 
+public static class AiEvaluationPolicy
+{
+    public const string Version = "ai-fit-v1";
+
+    public static IReadOnlyList<JobAnalysisCriterionDefinition> Criteria { get; } =
+        [new("overallFit", 100)];
+}
+
 public static class JobAnalysisRequestFactory
 {
     private const int PromptEnvelopeReserve = 8_000;
     private const int MaximumDescriptionCharacters = 24_000;
     private const int MaximumCvCharacters = 12_000;
+    private const int MaximumAiPreferencesCharacters = 4_000;
     private static readonly JsonSerializerOptions JsonOptions =
         JobAnalysisJson.CreateSerializerOptions();
 
@@ -33,7 +42,6 @@ public static class JobAnalysisRequestFactory
             capabilities.MaximumInputCharacters,
             PromptEnvelopeReserve,
             nameof(capabilities));
-
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
             timeout,
             TimeSpan.Zero);
@@ -41,46 +49,26 @@ public static class JobAnalysisRequestFactory
         var profile = loadedProfile.Profile;
         var collector = new EvidenceCollector(
             capabilities.MaximumInputCharacters - PromptEnvelopeReserve);
-
         collector.Add(
             "profile:target-titles",
             JobAnalysisEvidenceSource.Profile,
             Join(profile.TargetTitles));
         collector.Add(
-            "profile:skills",
+            "profile:required-skills",
             JobAnalysisEvidenceSource.Profile,
-            Join(
-                profile.Skills.Select(
-                    skill =>
-                        $"{skill.Name}; category={skill.Category}; required={skill.Required}; "
-                        + $"years={FormatDecimal(skill.YearsExperience)}; "
-                        + $"aliases={Join(skill.Aliases)}; evidence={Join(skill.Evidence)}")));
+            Join(profile.RequiredSkills));
         collector.Add(
-            "profile:role-preferences",
+            "profile:hard-filters",
             JobAnalysisEvidenceSource.Profile,
-            $"seniorities={Join(profile.RolePreferences.Seniorities)}; "
-            + $"locations={Join(profile.RolePreferences.Locations)}; "
-            + $"remote={profile.RolePreferences.RemotePolicy}; "
-            + $"employment={Join(profile.RolePreferences.EmploymentTypes)}");
+            $"locations={Join(profile.HardFilters.Locations)}; "
+            + $"remote={profile.HardFilters.RemotePolicy}");
         collector.Add(
-            "profile:languages",
+            "profile:ai-preferences",
             JobAnalysisEvidenceSource.Profile,
-            Join(
-                profile.Languages.Select(
-                    language =>
-                        $"{language.Name}; minimum={language.MinimumLevel ?? "unspecified"}; "
-                        + $"required={language.Required}")));
-        collector.Add(
-            "profile:preferred-domains",
-            JobAnalysisEvidenceSource.Profile,
-            Join(profile.PreferredDomains));
-        collector.Add(
-            "profile:salary",
-            JobAnalysisEvidenceSource.Profile,
-            profile.Salary is null
-                ? string.Empty
-                : $"minimum={profile.Salary.Minimum.ToString(CultureInfo.InvariantCulture)}; "
-                    + $"currency={profile.Salary.Currency}; period={profile.Salary.Period}");
+            string.Join(
+                Environment.NewLine,
+                profile.AiPreferences.Select(preference => $"- {preference}")),
+            MaximumAiPreferencesCharacters);
         collector.Add(
             "profile:supplemental-cv",
             JobAnalysisEvidenceSource.Profile,
@@ -131,24 +119,12 @@ public static class JobAnalysisRequestFactory
             profileSnapshot.Id,
             job.RevisionNumber,
             JobAnalysisSchema.Version,
-            DeterministicJobEvaluator.RubricVersion,
+            AiEvaluationPolicy.Version,
             now.Add(timeout),
-            CreateCriteria(profile.Scoring.Weights),
+            AiEvaluationPolicy.Criteria,
             collector.Fragments,
             collector.WasTruncated ? ["EvidenceTruncated"] : []);
     }
-
-    private static IReadOnlyList<JobAnalysisCriterionDefinition> CreateCriteria(
-        ScoringWeights weights) =>
-        [
-            new("coreSkills", weights.CoreSkills),
-            new("seniority", weights.Seniority),
-            new("relatedStack", weights.RelatedStack),
-            new("roleResponsibilities", weights.RoleResponsibilities),
-            new("locationLanguage", weights.LocationLanguage),
-            new("domain", weights.Domain),
-            new("compensation", weights.Compensation)
-        ];
 
     private static string FormatCompensation(JobSourceRecord job) =>
         job.CompensationMinimum is null && job.CompensationMaximum is null

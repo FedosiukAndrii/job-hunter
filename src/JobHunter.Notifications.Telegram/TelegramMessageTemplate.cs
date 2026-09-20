@@ -22,10 +22,6 @@ internal sealed class TelegramMessageTemplate
 
     public required string DebugBlock { get; init; }
 
-    public required string ScoreModeAi { get; init; }
-
-    public required string ScoreModeRules { get; init; }
-
     public required string MatchHigh { get; init; }
 
     public required string MatchMedium { get; init; }

@@ -1,5 +1,3 @@
-using JobHunter.Domain.Jobs;
-
 namespace JobHunter.Application.Profiles;
 
 public sealed record ProfileValidationError(
@@ -29,10 +27,6 @@ public sealed class CandidateProfileValidationException(
 
 public static class CandidateProfileValidator
 {
-    private static readonly HashSet<string> LanguageLevels = new(
-        ["A1", "A2", "B1", "B2", "C1", "C2", "Native"],
-        StringComparer.OrdinalIgnoreCase);
-
     public static void Validate(CandidateProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -48,14 +42,9 @@ public static class CandidateProfileValidator
         }
 
         ValidateRequiredList(profile.TargetTitles, "$.targetTitles", errors);
-        ValidateSkills(profile.Skills, errors);
-        ValidateRolePreferences(profile.RolePreferences, errors);
-        ValidateLanguages(profile.Languages, errors);
-        ValidateSalary(profile.Salary, errors);
-        ValidateScoring(profile.Scoring, errors);
-        ValidateUniqueValues(profile.ExcludedEmployers, "$.excludedEmployers", errors);
-        ValidateUniqueValues(profile.ExcludedKeywords, "$.excludedKeywords", errors);
-        ValidateUniqueValues(profile.PreferredDomains, "$.preferredDomains", errors);
+        ValidateUniqueValues(profile.RequiredSkills, "$.requiredSkills", errors);
+        ValidateHardFilters(profile.HardFilters, errors);
+        ValidateAiPreferences(profile.AiPreferences, errors);
 
         if (profile.SupplementalCvPath?.IndexOfAny(['\r', '\n', '\0']) >= 0)
         {
@@ -72,254 +61,97 @@ public static class CandidateProfileValidator
         }
     }
 
-    private static void ValidateSkills(
-        List<CandidateSkill>? skills,
+    private static void ValidateHardFilters(
+        HardFilters? filters,
         List<ProfileValidationError> errors)
     {
-        if (skills is null)
+        if (filters is null)
         {
             errors.Add(
                 new ProfileValidationError(
-                    "$.skills",
-                    "The skills collection cannot be null.",
-                    "Provide a YAML/JSON array with at least one skill."));
+                    "$.hardFilters",
+                    "Hard filters cannot be null.",
+                    "Use an empty hardFilters mapping when no explicit restriction is needed."));
             return;
         }
 
-        if (skills.Count == 0)
+        ValidateUniqueValues(filters.Locations, "$.hardFilters.locations", errors);
+        ValidateUniqueValues(
+            filters.ExcludedEmployers,
+            "$.hardFilters.excludedEmployers",
+            errors);
+        ValidateUniqueValues(
+            filters.ExcludedKeywords,
+            "$.hardFilters.excludedKeywords",
+            errors);
+
+        if (!Enum.IsDefined(filters.RemotePolicy))
         {
             errors.Add(
                 new ProfileValidationError(
-                    "$.skills",
-                    "At least one skill is required.",
-                    "Add explicit core or related skills with evidence."));
-            return;
-        }
-
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var index = 0;
-        foreach (var skill in skills)
-        {
-            var path = $"$.skills[{index}]";
-            if (string.IsNullOrWhiteSpace(skill.Name))
-            {
-                errors.Add(
-                    new ProfileValidationError(
-                        $"{path}.name",
-                        "A skill name is required.",
-                        "Provide a technology or competency name."));
-            }
-            else if (!names.Add(skill.Name.Trim()))
-            {
-                errors.Add(
-                    new ProfileValidationError(
-                        $"{path}.name",
-                        $"Skill '{skill.Name}' is duplicated.",
-                        "Merge evidence and aliases into one skill entry."));
-            }
-
-            if (skill.YearsExperience < 0 || skill.YearsExperience > 80)
-            {
-                errors.Add(
-                    new ProfileValidationError(
-                        $"{path}.yearsExperience",
-                        "Years of experience must be between 0 and 80.",
-                        "Use a verified non-negative number or omit the field."));
-            }
-
-            ValidateUniqueValues(skill.Aliases, $"{path}.aliases", errors);
-            ValidateUniqueValues(skill.Evidence, $"{path}.evidence", errors);
-            index++;
+                    "$.hardFilters.remotePolicy",
+                    "The remote policy is unsupported.",
+                    "Use any, remoteOnly, remoteOrHybrid, or onSiteOnly."));
         }
     }
 
-    private static void ValidateRolePreferences(
-        RolePreferences? preferences,
+    private static void ValidateAiPreferences(
+        List<string>? preferences,
         List<ProfileValidationError> errors)
     {
+        const int maximumPreferences = 12;
+        const int maximumPreferenceCharacters = 500;
+
         if (preferences is null)
         {
             errors.Add(
                 new ProfileValidationError(
-                    "$.rolePreferences",
-                    "Role preferences are required.",
-                    "Add rolePreferences, using empty lists where no restriction is needed."));
+                    "$.aiPreferences",
+                    "AI preferences cannot be null.",
+                    "Use an empty array when no additional preferences are needed."));
             return;
         }
 
-        ValidateUniqueValues(preferences.Seniorities, "$.rolePreferences.seniorities", errors);
-        ValidateUniqueValues(preferences.Locations, "$.rolePreferences.locations", errors);
-
-        if (!Enum.IsDefined(preferences.RemotePolicy))
+        if (preferences.Count > maximumPreferences)
         {
             errors.Add(
                 new ProfileValidationError(
-                    "$.rolePreferences.remotePolicy",
-                    "The remote policy is unsupported.",
-                    "Use any, remoteOnly, remoteOrHybrid, preferRemote, or onSiteOnly."));
+                    "$.aiPreferences",
+                    $"AI preferences cannot contain more than {maximumPreferences} entries.",
+                    "Combine related preferences into no more than 12 concise entries."));
         }
 
-        if (preferences.EmploymentTypes is null)
+        var uniquePreferences = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < preferences.Count; index++)
         {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.rolePreferences.employmentTypes",
-                    "Employment types cannot be null.",
-                    "Use an empty array when no employment type restriction is needed."));
-        }
-        else if (preferences.EmploymentTypes.Distinct().Count()
-                 != preferences.EmploymentTypes.Count)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.rolePreferences.employmentTypes",
-                    "Employment types must be unique.",
-                    "Remove repeated employment type values."));
-        }
-    }
-
-    private static void ValidateLanguages(
-        List<LanguagePreference>? languages,
-        List<ProfileValidationError> errors)
-    {
-        if (languages is null)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.languages",
-                    "Languages cannot be null.",
-                    "Use an empty array when no language preference is needed."));
-            return;
-        }
-
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var index = 0;
-        foreach (var language in languages)
-        {
-            var path = $"$.languages[{index}]";
-            if (string.IsNullOrWhiteSpace(language.Name))
+            var preference = preferences[index];
+            var path = $"$.aiPreferences[{index}]";
+            if (string.IsNullOrWhiteSpace(preference))
             {
                 errors.Add(
                     new ProfileValidationError(
-                        $"{path}.name",
-                        "A language name is required.",
-                        "Provide the language name."));
-            }
-            else if (!names.Add(language.Name.Trim()))
-            {
-                errors.Add(
-                    new ProfileValidationError(
-                        $"{path}.name",
-                        $"Language '{language.Name}' is duplicated.",
-                        "Keep one requirement per language."));
+                        path,
+                        "An AI preference cannot be blank.",
+                        "Provide a concise preference or remove this entry."));
+                continue;
             }
 
-            if (language.MinimumLevel is not null
-                && !LanguageLevels.Contains(language.MinimumLevel))
+            if (preference.Length > maximumPreferenceCharacters)
             {
                 errors.Add(
                     new ProfileValidationError(
-                        $"{path}.minimumLevel",
-                        $"Language level '{language.MinimumLevel}' is unsupported.",
-                        "Use A1, A2, B1, B2, C1, C2, Native, or omit the level."));
+                        path,
+                        $"An AI preference cannot exceed {maximumPreferenceCharacters} characters.",
+                        "Split the preference into shorter concise entries."));
             }
 
-            index++;
-        }
-    }
-
-    private static void ValidateSalary(
-        SalaryExpectation? salary,
-        List<ProfileValidationError> errors)
-    {
-        if (salary is null)
-        {
-            return;
-        }
-
-        if (salary.Minimum <= 0)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.salary.minimum",
-                    "The salary floor must be greater than zero.",
-                    "Provide a positive verified amount or remove salary."));
-        }
-
-        if (salary.Currency.Length != 3
-            || salary.Currency.Any(character => !char.IsAsciiLetterUpper(character)))
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.salary.currency",
-                    "Currency must be a three-letter uppercase ISO-style code.",
-                    "Use a value such as USD, EUR, or UAH."));
-        }
-
-        if (salary.Period == CompensationPeriod.Unknown)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.salary.period",
-                    "A salary period is required.",
-                    "Use hour, month, or year."));
-        }
-    }
-
-    private static void ValidateScoring(
-        ScoringPreferences? scoring,
-        List<ProfileValidationError> errors)
-    {
-        if (scoring is null)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.scoring",
-                    "Scoring configuration is required.",
-                    "Add thresholds and weights, or use the documented defaults."));
-            return;
-        }
-
-        ValidateScore(scoring.RulesOnlyThreshold, "$.scoring.rulesOnlyThreshold", errors);
-        ValidateScore(scoring.RulesAndAiThreshold, "$.scoring.rulesAndAiThreshold", errors);
-        if (scoring.Weights is null)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.scoring.weights",
-                    "Scoring weights cannot be null.",
-                    "Provide all seven criterion weights."));
-            return;
-        }
-
-        if (scoring.Weights.Total != 100)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    "$.scoring.weights",
-                    $"Scoring weights total {scoring.Weights.Total}, not 100.",
-                    "Adjust the seven criterion weights so they sum to 100."));
-        }
-
-        var weights = new Dictionary<string, int>
-        {
-            ["coreSkills"] = scoring.Weights.CoreSkills,
-            ["seniority"] = scoring.Weights.Seniority,
-            ["relatedStack"] = scoring.Weights.RelatedStack,
-            ["roleResponsibilities"] = scoring.Weights.RoleResponsibilities,
-            ["locationLanguage"] = scoring.Weights.LocationLanguage,
-            ["domain"] = scoring.Weights.Domain,
-            ["compensation"] = scoring.Weights.Compensation
-        };
-        foreach (var (name, value) in weights)
-        {
-            if (value < 0)
+            if (!uniquePreferences.Add(preference.Trim()))
             {
                 errors.Add(
                     new ProfileValidationError(
-                        $"$.scoring.weights.{name}",
-                        "A criterion weight cannot be negative.",
-                        "Use a value from 0 to 100."));
+                        path,
+                        "AI preferences must be unique.",
+                        "Remove the duplicate preference."));
             }
         }
     }
@@ -345,7 +177,7 @@ public static class CandidateProfileValidator
                 new ProfileValidationError(
                     path,
                     "At least one value is required.",
-                    "Add one or more explicit values."));
+                    "Add one or more target titles."));
         }
 
         ValidateUniqueValues(values, path, errors);
@@ -367,9 +199,9 @@ public static class CandidateProfileValidator
         }
 
         var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var index = 0;
-        foreach (var value in values)
+        for (var index = 0; index < values.Count; index++)
         {
+            var value = values[index];
             if (string.IsNullOrWhiteSpace(value))
             {
                 errors.Add(
@@ -386,23 +218,6 @@ public static class CandidateProfileValidator
                         $"Value '{value}' is duplicated.",
                         "Remove the duplicate value."));
             }
-
-            index++;
-        }
-    }
-
-    private static void ValidateScore(
-        int value,
-        string path,
-        List<ProfileValidationError> errors)
-    {
-        if (value is < 0 or > 100)
-        {
-            errors.Add(
-                new ProfileValidationError(
-                    path,
-                    "A threshold must be between 0 and 100.",
-                    "Choose an inclusive score from 0 to 100."));
         }
     }
 }

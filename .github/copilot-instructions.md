@@ -12,12 +12,13 @@ architecture, behavior, data models, integrations, or deployment.
   the database or Telegram credentials.
 - Native .NET execution is the primary deployment path. Do not make Docker,
   Docker Desktop, Compose, or a running Python sidecar a prerequisite for DOU,
-  rules-only scoring, optional Copilot analysis, SQLite, or Telegram.
+  mandatory Copilot analysis, SQLite, or Telegram.
 - JobSpy remains an explicitly configured optional sidecar. It may run in Docker
   or from a separately managed local Python environment over loopback HTTP.
-- AI is optional. The source, normalization, persistence, deterministic rules,
-  and notification pipeline must continue to work if every AI provider is
-  disabled, unavailable, invalid, or over quota.
+- Copilot analysis is mandatory for qualification and notification. Local hard
+  filters must run before analysis; unavailable, invalid, or low-confidence
+  analysis must preserve the job and defer notification rather than falling back
+  to deterministic scoring.
 - Preserve the `IJobAnalyzer` provider boundary. Copilot is the first adapter;
   it must not leak Copilot SDK types into domain or application projects.
 - Treat vacancy text, CV Markdown, metadata, links, and source responses as

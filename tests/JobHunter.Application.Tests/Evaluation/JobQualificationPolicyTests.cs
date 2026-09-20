@@ -1,63 +1,74 @@
 using JobHunter.AI.Abstractions;
 using JobHunter.Application.Evaluation;
-using JobHunter.Domain.Jobs;
 
 namespace JobHunter.Application.Tests.Evaluation;
 
 public sealed class JobQualificationPolicyTests
 {
     [Fact]
-    public void DecideUsesEqualRulesAndAiWeight()
+    public void DecideUsesAiScoreAsTheQualificationScore()
     {
         var decision = JobQualificationPolicy.Decide(
-            CreateDeterministic(score: 70, rulesAndAiThreshold: 75),
-            CreateAnalysis(score: 90, confidence: 0.8),
-            0.65);
+            CreateDeterministic(),
+            CreateAnalysis(score: 80, confidence: 0.8),
+            0.65,
+            75);
 
         Assert.True(decision.Qualifies);
         Assert.Equal(80, decision.Score);
-        Assert.Equal("rules-and-ai", decision.ScoreMode);
-        Assert.True(decision.UsedAi);
         Assert.Equal("AI summary.", decision.AiSummary);
-        Assert.Equal(70, decision.DeterministicScore);
         Assert.Contains("Strong .NET/backend match", decision.Strengths);
         Assert.Contains("AWS is not stated", decision.Concerns);
         Assert.Equal(20, decision.AiUsage?.InputTokens);
     }
 
     [Fact]
-    public void DecideFallsBackToRulesOnlyBelowMinimumConfidence()
+    public void DecideDefersWhenAiConfidenceIsBelowMinimum()
     {
         var decision = JobQualificationPolicy.Decide(
-            CreateDeterministic(
-                score: 73,
-                rulesOnlyThreshold: 72,
-                rulesAndAiThreshold: 90),
+            CreateDeterministic(),
             CreateAnalysis(score: 100, confidence: 0.64),
-            0.65);
+            0.65,
+            75);
 
-        Assert.True(decision.Qualifies);
-        Assert.Equal(73, decision.Score);
-        Assert.Equal("rules-only", decision.ScoreMode);
-        Assert.False(decision.UsedAi);
+        Assert.False(decision.Qualifies);
+        Assert.Equal(0, decision.Score);
         Assert.Null(decision.AiSummary);
         Assert.Equal(20, decision.AiUsage?.InputTokens);
     }
 
+    [Fact]
+    public void DecideRejectsWhenAiScoreIsBelowThreshold()
+    {
+        var decision = JobQualificationPolicy.Decide(
+            CreateDeterministic(),
+            CreateAnalysis(score: 74, confidence: 0.9),
+            0.65,
+            75);
+
+        Assert.False(decision.Qualifies);
+        Assert.Equal(74, decision.Score);
+    }
+
+    [Fact]
+    public void DecideRejectsBeforeAiWhenHardFilterFails()
+    {
+        var decision = JobQualificationPolicy.Decide(
+            CreateDeterministic(passedHardFilters: false),
+            CreateAnalysis(score: 100, confidence: 0.9),
+            0.65,
+            75);
+
+        Assert.False(decision.Qualifies);
+    }
+
     private static DeterministicEvaluation CreateDeterministic(
-        int score,
-        int rulesOnlyThreshold = 72,
-        int rulesAndAiThreshold = 75) =>
+        bool passedHardFilters = true) =>
         new(
-            "rules-v1",
-            true,
-            new JobScore(score),
-            rulesOnlyThreshold,
-            rulesAndAiThreshold,
+            DeterministicJobEvaluator.RubricVersion,
+            passedHardFilters,
             [],
-            [],
-            [],
-            "Rules summary.");
+            "Hard-filter summary.");
 
     private static JobAnalysisResult CreateAnalysis(int score, double confidence) =>
         new(
@@ -65,7 +76,7 @@ public sealed class JobQualificationPolicyTests
             "copilot",
             "test-model",
             JobAnalysisSchema.Version,
-            "rules-v1",
+            AiEvaluationPolicy.Version,
             new JobAnalysisOutput(
                 score,
                 confidence,

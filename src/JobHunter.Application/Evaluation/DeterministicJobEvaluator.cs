@@ -1,23 +1,15 @@
 using System.Text;
-using System.Globalization;
 using JobHunter.Application.Profiles;
 using JobHunter.Application.Sources;
 using JobHunter.Domain.Jobs;
 
 namespace JobHunter.Application.Evaluation;
 
-public sealed class DeterministicJobEvaluator
+public static class DeterministicJobEvaluator
 {
-    public const string RubricVersion = "rules-v1";
+    public const string RubricVersion = "hard-filters-v1";
 
-    private readonly string _rubricVersion;
-
-    public DeterministicJobEvaluator()
-    {
-        _rubricVersion = RubricVersion;
-    }
-
-    public DeterministicEvaluation Evaluate(
+    public static DeterministicEvaluation Evaluate(
         CandidateProfile profile,
         JobSourceRecord job)
     {
@@ -33,44 +25,14 @@ public sealed class DeterministicJobEvaluator
                 job.DescriptionText,
                 string.Join(' ', job.Skills),
                 string.Join(' ', job.Categories)));
-        var hardFilters = EvaluateHardFilters(profile, job, searchableText);
-        var missingData = new HashSet<string>(StringComparer.Ordinal);
-        var criteria = new List<CriterionEvaluation>
-        {
-            ScoreSkills(
-                "coreSkills",
-                profile.Skills.Where(skill => skill.Category == SkillCategory.Core).ToList(),
-                profile.Scoring.Weights.CoreSkills,
-                searchableText,
-                missingData),
-            ScoreSeniority(profile, job, missingData),
-            ScoreSkills(
-                "relatedStack",
-                profile.Skills.Where(skill => skill.Category == SkillCategory.Related).ToList(),
-                profile.Scoring.Weights.RelatedStack,
-                searchableText,
-                missingData),
-            ScoreRole(profile, job, searchableText, missingData),
-            ScoreLocationAndLanguage(profile, job, searchableText, missingData),
-            ScoreDomain(profile, searchableText, missingData),
-            ScoreCompensation(profile, job, missingData)
-        };
-
-        var total = criteria.Sum(criterion => criterion.AwardedPoints);
-        var score = new JobScore(Math.Clamp(total, 0, 100));
-        var passedHardFilters = hardFilters.All(result => result.Outcome != RuleOutcome.Failed);
-        var explanation = BuildExplanation(passedHardFilters, score, hardFilters, criteria, missingData);
+        var filters = EvaluateHardFilters(profile, job, searchableText);
+        var passed = filters.All(filter => filter.Outcome != RuleOutcome.Failed);
 
         return new DeterministicEvaluation(
-            _rubricVersion,
-            passedHardFilters,
-            score,
-            profile.Scoring.RulesOnlyThreshold,
-            profile.Scoring.RulesAndAiThreshold,
-            hardFilters,
-            criteria,
-            [.. missingData.Order(StringComparer.Ordinal)],
-            explanation);
+            RubricVersion,
+            passed,
+            filters,
+            BuildExplanation(passed, filters));
     }
 
     private static List<HardFilterResult> EvaluateHardFilters(
@@ -78,9 +40,10 @@ public sealed class DeterministicJobEvaluator
         JobSourceRecord job,
         string searchableText)
     {
+        var filters = profile.HardFilters;
         var results = new List<HardFilterResult>();
 
-        foreach (var employer in profile.ExcludedEmployers)
+        foreach (var employer in filters.ExcludedEmployers)
         {
             if (ContainsTerm(Normalize(job.Company), employer))
             {
@@ -93,7 +56,7 @@ public sealed class DeterministicJobEvaluator
             }
         }
 
-        foreach (var keyword in profile.ExcludedKeywords)
+        foreach (var keyword in filters.ExcludedKeywords)
         {
             if (ContainsTerm(searchableText, keyword))
             {
@@ -106,30 +69,31 @@ public sealed class DeterministicJobEvaluator
             }
         }
 
-        foreach (var skill in profile.Skills.Where(skill => skill.Required))
+        foreach (var skill in profile.RequiredSkills)
         {
-            if (!SkillMatches(searchableText, skill))
+            if (!ContainsTerm(searchableText, skill))
             {
                 results.Add(
                     Failed(
-                        "mandatory-skill",
-                        "MissingMandatorySkill",
-                        $"profile:skill:{Slug(skill.Name)}",
-                        $"Required skill '{skill.Name}' is not stated in the vacancy."));
+                        "required-skill",
+                        "MissingRequiredSkill",
+                        "profile:required-skills",
+                        $"Required skill '{skill}' is not stated in the vacancy."));
             }
         }
 
-        var remoteResult = EvaluateRemotePolicy(profile.RolePreferences.RemotePolicy, job.WorkplaceMode);
+        var remoteResult = EvaluateRemotePolicy(filters.RemotePolicy, job.WorkplaceMode);
         if (remoteResult is not null)
         {
             results.Add(remoteResult);
         }
 
-        if (profile.RolePreferences.Locations.Count > 0
+        if (filters.Locations.Count > 0
             && job.WorkplaceMode != WorkplaceMode.Remote
             && job.Locations.Count > 0
-            && !profile.RolePreferences.Locations.Any(
-                preferred => job.Locations.Any(location => ContainsTerm(Normalize(location), preferred))))
+            && !filters.Locations.Any(
+                preferred => job.Locations.Any(
+                    location => ContainsTerm(Normalize(location), preferred))))
         {
             results.Add(
                 Failed(
@@ -137,36 +101,6 @@ public sealed class DeterministicJobEvaluator
                     "LocationMismatch",
                     "job:locations",
                     "The explicitly stated job location is outside configured locations."));
-        }
-
-        if (profile.RolePreferences.EmploymentTypes.Count > 0
-            && job.EmploymentType != EmploymentType.Unknown
-            && !profile.RolePreferences.EmploymentTypes.Contains(job.EmploymentType))
-        {
-            results.Add(
-                Failed(
-                    "employment-type",
-                    "EmploymentTypeMismatch",
-                    "job:employment-type",
-                    "The explicitly stated employment type is not accepted."));
-        }
-
-        var salary = profile.Salary;
-        if (salary is not null
-            && job.CompensationMaximum is not null
-            && string.Equals(
-                salary.Currency,
-                job.CompensationCurrency,
-                StringComparison.OrdinalIgnoreCase)
-            && salary.Period == job.CompensationPeriod
-            && job.CompensationMaximum < salary.Minimum)
-        {
-            results.Add(
-                Failed(
-                    "salary-floor",
-                    "BelowSalaryFloor",
-                    "job:compensation",
-                    "The explicitly stated maximum compensation is below the configured floor."));
         }
 
         if (results.Count == 0)
@@ -209,267 +143,18 @@ public sealed class DeterministicJobEvaluator
             _ => null
         };
 
-    private static CriterionEvaluation ScoreSkills(
-        string criterionId,
-        List<CandidateSkill> skills,
-        int maximumPoints,
-        string searchableText,
-        HashSet<string> missingData)
-    {
-        if (maximumPoints == 0)
-        {
-            return new CriterionEvaluation(criterionId, 0, 0, [], false);
-        }
-
-        if (skills.Count == 0)
-        {
-            return new CriterionEvaluation(criterionId, maximumPoints, maximumPoints, [], false);
-        }
-
-        var matched = skills
-            .Where(skill => SkillMatches(searchableText, skill))
-            .ToList();
-        if (matched.Count == 0)
-        {
-            missingData.Add($"job:{criterionId}");
-        }
-
-        var awarded = WeightedPoints(maximumPoints, matched.Count, skills.Count);
-        return new CriterionEvaluation(
-            criterionId,
-            awarded,
-            maximumPoints,
-            matched.Select(skill => $"profile:skill:{Slug(skill.Name)}").ToArray(),
-            matched.Count == 0);
-    }
-
-    private static CriterionEvaluation ScoreSeniority(
-        CandidateProfile profile,
-        JobSourceRecord job,
-        HashSet<string> missingData)
-    {
-        var maximum = profile.Scoring.Weights.Seniority;
-        if (profile.RolePreferences.Seniorities.Count == 0)
-        {
-            return new CriterionEvaluation("seniority", maximum, maximum, [], false);
-        }
-
-        if (string.IsNullOrWhiteSpace(job.Seniority))
-        {
-            missingData.Add("job:seniority");
-            return new CriterionEvaluation("seniority", 0, maximum, [], true);
-        }
-
-        var matches = profile.RolePreferences.Seniorities.Any(
-            preferred => ContainsTerm(Normalize(job.Seniority), preferred));
-        return new CriterionEvaluation(
-            "seniority",
-            matches ? maximum : 0,
-            maximum,
-            matches ? ["job:seniority"] : [],
-            false);
-    }
-
-    private static CriterionEvaluation ScoreRole(
-        CandidateProfile profile,
-        JobSourceRecord job,
-        string searchableText,
-        HashSet<string> missingData)
-    {
-        var maximum = profile.Scoring.Weights.RoleResponsibilities;
-        var titleText = Normalize(job.Title);
-        var titleMatch = profile.TargetTitles.Any(title => ContainsTerm(titleText, title));
-        var bodyMatch = profile.TargetTitles.Any(title => ContainsTerm(searchableText, title));
-
-        if (!titleMatch && !bodyMatch)
-        {
-            missingData.Add("job:target-role");
-        }
-
-        return new CriterionEvaluation(
-            "roleResponsibilities",
-            titleMatch ? maximum : bodyMatch ? maximum / 2 : 0,
-            maximum,
-            titleMatch ? ["job:title"] : bodyMatch ? ["job:text"] : [],
-            !titleMatch && !bodyMatch);
-    }
-
-    private static CriterionEvaluation ScoreLocationAndLanguage(
-        CandidateProfile profile,
-        JobSourceRecord job,
-        string searchableText,
-        HashSet<string> missingData)
-    {
-        var maximum = profile.Scoring.Weights.LocationLanguage;
-        var hasLocationRequirement = profile.RolePreferences.Locations.Count > 0
-            || profile.RolePreferences.RemotePolicy != RemotePolicy.Any;
-        var hasLanguageRequirement = profile.Languages.Count > 0;
-        if (!hasLocationRequirement && !hasLanguageRequirement)
-        {
-            return new CriterionEvaluation("locationLanguage", maximum, maximum, [], false);
-        }
-
-        var dimensions = 0;
-        var matches = 0;
-        var evidence = new List<string>();
-
-        if (hasLocationRequirement)
-        {
-            dimensions++;
-            var locationMatches = job.WorkplaceMode == WorkplaceMode.Remote
-                && profile.RolePreferences.RemotePolicy != RemotePolicy.OnSiteOnly
-                || profile.RolePreferences.Locations.Any(
-                    preferred => job.Locations.Any(
-                        location => ContainsTerm(Normalize(location), preferred)));
-            if (locationMatches)
-            {
-                matches++;
-                evidence.Add(
-                    job.WorkplaceMode == WorkplaceMode.Remote
-                        ? "job:workplace-mode"
-                        : "job:locations");
-            }
-            else if (job.WorkplaceMode == WorkplaceMode.Unknown && job.Locations.Count == 0)
-            {
-                missingData.Add("job:location-workplace");
-            }
-        }
-
-        if (hasLanguageRequirement)
-        {
-            dimensions++;
-            var languageMatches = profile.Languages.Count(
-                language => ContainsTerm(searchableText, language.Name));
-            if (languageMatches == profile.Languages.Count)
-            {
-                matches++;
-                evidence.Add("job:text");
-            }
-            else
-            {
-                missingData.Add("job:languages");
-            }
-        }
-
-        return new CriterionEvaluation(
-            "locationLanguage",
-            WeightedPoints(maximum, matches, dimensions),
-            maximum,
-            evidence,
-            evidence.Count == 0);
-    }
-
-    private static CriterionEvaluation ScoreDomain(
-        CandidateProfile profile,
-        string searchableText,
-        HashSet<string> missingData)
-    {
-        var maximum = profile.Scoring.Weights.Domain;
-        if (profile.PreferredDomains.Count == 0)
-        {
-            return new CriterionEvaluation("domain", maximum, maximum, [], false);
-        }
-
-        var matched = profile.PreferredDomains
-            .Where(domain => ContainsTerm(searchableText, domain))
-            .ToArray();
-        if (matched.Length == 0)
-        {
-            missingData.Add("job:domain");
-        }
-
-        return new CriterionEvaluation(
-            "domain",
-            WeightedPoints(maximum, matched.Length, profile.PreferredDomains.Count),
-            maximum,
-            matched.Select(domain => $"profile:domain:{Slug(domain)}").ToArray(),
-            matched.Length == 0);
-    }
-
-    private static CriterionEvaluation ScoreCompensation(
-        CandidateProfile profile,
-        JobSourceRecord job,
-        HashSet<string> missingData)
-    {
-        var maximum = profile.Scoring.Weights.Compensation;
-        if (profile.Salary is null)
-        {
-            return new CriterionEvaluation("compensation", maximum, maximum, [], false);
-        }
-
-        if (job.CompensationMaximum is null
-            || job.CompensationCurrency is null
-            || job.CompensationPeriod == CompensationPeriod.Unknown)
-        {
-            missingData.Add("job:compensation");
-            return new CriterionEvaluation("compensation", 0, maximum, [], true);
-        }
-
-        var comparable = string.Equals(
-                profile.Salary.Currency,
-                job.CompensationCurrency,
-                StringComparison.OrdinalIgnoreCase)
-            && profile.Salary.Period == job.CompensationPeriod;
-        if (!comparable)
-        {
-            missingData.Add("job:compensation-comparability");
-            return new CriterionEvaluation("compensation", 0, maximum, [], true);
-        }
-
-        var meetsFloor = job.CompensationMaximum >= profile.Salary.Minimum;
-        return new CriterionEvaluation(
-            "compensation",
-            meetsFloor ? maximum : 0,
-            maximum,
-            ["job:compensation"],
-            false);
-    }
-
     private static string BuildExplanation(
-        bool passedHardFilters,
-        JobScore score,
-        IReadOnlyCollection<HardFilterResult> hardFilters,
-        IReadOnlyCollection<CriterionEvaluation> criteria,
-        HashSet<string> missingData)
+        bool passed,
+        IReadOnlyCollection<HardFilterResult> filters)
     {
-        var builder = new StringBuilder();
-        builder.Append(passedHardFilters ? "Hard filters passed." : "Hard filters rejected the vacancy.");
-        builder.Append(
-            CultureInfo.InvariantCulture,
-            $" Deterministic score: {score.Value}/100.");
-
-        var failedReasonCodes = hardFilters
-            .Where(result => result.Outcome == RuleOutcome.Failed)
-            .Select(result => result.ReasonCode)
+        var failedReasonCodes = filters
+            .Where(filter => filter.Outcome == RuleOutcome.Failed)
+            .Select(filter => filter.ReasonCode)
             .Where(code => code is not null)
             .ToArray();
-        if (failedReasonCodes.Length > 0)
-        {
-            builder.Append(
-                CultureInfo.InvariantCulture,
-                $" Reasons: {string.Join(", ", failedReasonCodes)}.");
-        }
-
-        var strongest = criteria
-            .Where(criterion => criterion.AwardedPoints > 0)
-            .OrderByDescending(criterion => criterion.AwardedPoints)
-            .ThenBy(criterion => criterion.CriterionId, StringComparer.Ordinal)
-            .FirstOrDefault();
-        if (strongest is not null)
-        {
-            builder.Append(
-                CultureInfo.InvariantCulture,
-                $" Strongest criterion: {strongest.CriterionId} ({strongest.AwardedPoints}/{strongest.MaximumPoints}).");
-        }
-
-        if (missingData.Count > 0)
-        {
-            builder.Append(
-                CultureInfo.InvariantCulture,
-                $" Missing explicit data: {string.Join(", ", missingData.Order(StringComparer.Ordinal))}.");
-        }
-
-        return builder.ToString();
+        return failedReasonCodes.Length == 0
+            ? "Hard filters passed. AI evaluation is required for qualification."
+            : $"Hard filters rejected the vacancy: {string.Join(", ", failedReasonCodes)}.";
     }
 
     private static HardFilterResult Failed(
@@ -478,10 +163,6 @@ public sealed class DeterministicJobEvaluator
         string evidenceId,
         string explanation) =>
         new(ruleId, RuleOutcome.Failed, reasonCode, [evidenceId], explanation);
-
-    private static bool SkillMatches(string normalizedText, CandidateSkill skill) =>
-        ContainsTerm(normalizedText, skill.Name)
-        || skill.Aliases.Any(alias => ContainsTerm(normalizedText, alias));
 
     private static bool ContainsTerm(string normalizedText, string term)
     {
@@ -517,16 +198,6 @@ public sealed class DeterministicJobEvaluator
 
         return builder.ToString().Trim();
     }
-
-    private static string Slug(string value) =>
-        Normalize(value).Replace(' ', '-');
-
-    private static int WeightedPoints(int maximum, int matched, int total) =>
-        total == 0
-            ? maximum
-            : (int)Math.Round(
-                maximum * (decimal)matched / total,
-                MidpointRounding.AwayFromZero);
 }
 
 public enum RuleOutcome
@@ -543,20 +214,8 @@ public sealed record HardFilterResult(
     IReadOnlyList<string> EvidenceIds,
     string Explanation);
 
-public sealed record CriterionEvaluation(
-    string CriterionId,
-    int AwardedPoints,
-    int MaximumPoints,
-    IReadOnlyList<string> EvidenceIds,
-    bool HasMissingData);
-
 public sealed record DeterministicEvaluation(
     string RubricVersion,
     bool PassedHardFilters,
-    JobScore Score,
-    int RulesOnlyThreshold,
-    int RulesAndAiThreshold,
     IReadOnlyList<HardFilterResult> HardFilters,
-    IReadOnlyList<CriterionEvaluation> Criteria,
-    IReadOnlyList<string> MissingData,
     string Explanation);

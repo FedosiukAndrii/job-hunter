@@ -8,63 +8,54 @@ public sealed class CandidateProfileValidatorTests
     public void ValidateReportsFieldPathAndRemediation()
     {
         var profile = ValidProfile();
-        profile.Scoring.Weights.Compensation = 4;
-        profile.Skills.Add(
-            new CandidateSkill
-            {
-                Name = ".net",
-                Category = SkillCategory.Core
-            });
+        profile.RequiredSkills.Add(".net");
+        profile.AiPreferences = [" "];
 
         var exception = Assert.Throws<CandidateProfileValidationException>(
             () => CandidateProfileValidator.Validate(profile));
 
-        Assert.Contains(exception.Errors, error => error.Path == "$.scoring.weights");
-        Assert.Contains(exception.Errors, error => error.Path == "$.skills[2].name");
+        Assert.Contains(exception.Errors, error => error.Path == "$.requiredSkills[1]");
+        Assert.Contains(exception.Errors, error => error.Path == "$.aiPreferences[0]");
         Assert.All(exception.Errors, error => Assert.False(string.IsNullOrWhiteSpace(error.Remediation)));
+    }
+
+    [Fact]
+    public void ValidateRejectsUnsupportedRemotePolicy()
+    {
+        var profile = ValidProfile();
+        profile.HardFilters.RemotePolicy = (RemotePolicy)99;
+
+        var exception = Assert.Throws<CandidateProfileValidationException>(
+            () => CandidateProfileValidator.Validate(profile));
+
+        Assert.Contains(
+            exception.Errors,
+            error => error.Path == "$.hardFilters.remotePolicy");
+    }
+
+    [Fact]
+    public void ValidateRejectsBlankAndOversizedAiPreferences()
+    {
+        var profile = ValidProfile();
+        profile.AiPreferences = [" ", new string('a', 501)];
+
+        var exception = Assert.Throws<CandidateProfileValidationException>(
+            () => CandidateProfileValidator.Validate(profile));
+
+        Assert.Contains(exception.Errors, error => error.Path == "$.aiPreferences[0]");
+        Assert.Contains(exception.Errors, error => error.Path == "$.aiPreferences[1]");
     }
 
     internal static CandidateProfile ValidProfile() =>
         new()
         {
             TargetTitles = ["Backend Engineer"],
-            Skills =
-            [
-                new CandidateSkill
-                {
-                    Name = ".NET",
-                    Category = SkillCategory.Core,
-                    Required = true,
-                    Aliases = ["dotnet"]
-                },
-                new CandidateSkill
-                {
-                    Name = "PostgreSQL",
-                    Category = SkillCategory.Related
-                }
-            ],
-            RolePreferences = new RolePreferences
+            RequiredSkills = [".NET"],
+            HardFilters = new HardFilters
             {
-                Seniorities = ["Senior"],
                 Locations = ["Ukraine"],
-                RemotePolicy = RemotePolicy.RemoteOnly,
-                EmploymentTypes = [Domain.Jobs.EmploymentType.FullTime]
+                RemotePolicy = RemotePolicy.RemoteOnly
             },
-            Languages =
-            [
-                new LanguagePreference
-                {
-                    Name = "English",
-                    MinimumLevel = "B2"
-                }
-            ],
-            PreferredDomains = ["FinTech"],
-            Salary = new SalaryExpectation
-            {
-                Minimum = 4000,
-                Currency = "USD",
-                Period = Domain.Jobs.CompensationPeriod.Month
-            },
-            Scoring = new ScoringPreferences()
+            AiPreferences = ["Prefer backend-focused roles."]
         };
 }

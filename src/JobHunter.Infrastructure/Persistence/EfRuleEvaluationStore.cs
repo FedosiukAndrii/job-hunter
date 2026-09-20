@@ -1,6 +1,7 @@
 using System.Text.Json;
 using JobHunter.Application.Evaluation;
 using JobHunter.Domain.Evaluation;
+using JobHunter.Domain.Jobs;
 using Microsoft.EntityFrameworkCore;
 
 namespace JobHunter.Infrastructure.Persistence;
@@ -41,12 +42,7 @@ public sealed class EfRuleEvaluationStore(
             jobRevisionNumber,
             evaluation.RubricVersion,
             evaluation.PassedHardFilters,
-            evaluation.Score,
-            evaluation.RulesOnlyThreshold,
-            evaluation.RulesAndAiThreshold,
             JsonSerializer.Serialize(evaluation.HardFilters, JsonOptions),
-            JsonSerializer.Serialize(evaluation.Criteria, JsonOptions),
-            JsonSerializer.Serialize(evaluation.MissingData, JsonOptions),
             evaluation.Explanation,
             now);
         context.RuleEvaluations.Add(entity);

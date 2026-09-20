@@ -88,6 +88,7 @@ public sealed class CopilotIsolationTests
         var prompt = CopilotAnalysisPromptBuilder.SystemMessage;
 
         Assert.Contains("untrusted evidence", prompt, StringComparison.Ordinal);
+        Assert.Contains("profile:ai-preferences", prompt, StringComparison.Ordinal);
         Assert.Contains("submit_job_analysis exactly once", prompt, StringComparison.Ordinal);
         Assert.Contains("Do not use markdown or Telegram", prompt, StringComparison.Ordinal);
     }

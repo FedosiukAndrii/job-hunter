@@ -27,6 +27,7 @@ public sealed class FileCandidateProfileLoaderTests
             .LoadAsync(CancellationToken.None);
 
         Assert.Equal(["Backend Engineer"], profile.Profile.TargetTitles);
+        Assert.Equal([".NET"], profile.Profile.RequiredSkills);
         Assert.Contains("[redacted-email]", profile.SupplementalCvRedacted);
         Assert.Contains("[redacted-phone]", profile.SupplementalCvRedacted);
         Assert.Contains("[redacted-address]", profile.SupplementalCvRedacted);
@@ -43,23 +44,10 @@ public sealed class FileCandidateProfileLoaderTests
             profilePath,
             """
             {
-              "schemaVersion": 1,
+              "schemaVersion": 2,
               "targetTitles": ["Backend Engineer"],
-              "skills": [{"name": ".NET", "required": true}],
-              "rolePreferences": {},
-              "scoring": {
-                "rulesOnlyThreshold": 72,
-                "rulesAndAiThreshold": 75,
-                "weights": {
-                  "coreSkills": 30,
-                  "seniority": 15,
-                  "relatedStack": 15,
-                  "roleResponsibilities": 15,
-                  "locationLanguage": 10,
-                  "domain": 10,
-                  "compensation": 5
-                }
-              },
+              "requiredSkills": [".NET"],
+              "hardFilters": {},
               "unexpected": true
             }
             """);
@@ -91,41 +79,15 @@ public sealed class FileCandidateProfileLoaderTests
 
     private const string ValidYaml =
         """
-        schemaVersion: 1
+        schemaVersion: 2
         targetTitles:
           - Backend Engineer
-        skills:
-          - name: .NET
-            category: core
-            required: true
-        rolePreferences:
-          seniorities:
-            - Senior
+        requiredSkills:
+          - .NET
+        hardFilters:
           locations:
             - Ukraine
           remotePolicy: remoteOnly
-          employmentTypes:
-            - fullTime
-        languages:
-          - name: English
-            minimumLevel: B2
-        preferredDomains:
-          - FinTech
-        salary:
-          minimum: 4000
-          currency: USD
-          period: month
-        scoring:
-          rulesOnlyThreshold: 72
-          rulesAndAiThreshold: 75
-          weights:
-            coreSkills: 30
-            seniority: 15
-            relatedStack: 15
-            roleResponsibilities: 15
-            locationLanguage: 10
-            domain: 10
-            compensation: 5
         supplementalCvPath: cv.md
         """;
 }

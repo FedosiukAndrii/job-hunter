@@ -225,8 +225,6 @@ public sealed class JobHunterDbContext(DbContextOptions<JobHunterDbContext> opti
         evaluation.HasKey(entity => entity.Id);
         evaluation.Property(entity => entity.RubricVersion).HasMaxLength(64).IsRequired();
         evaluation.Property(entity => entity.RuleResultsJson).IsRequired();
-        evaluation.Property(entity => entity.EvidenceJson).IsRequired();
-        evaluation.Property(entity => entity.MissingDataJson).IsRequired();
         evaluation.Property(entity => entity.Explanation).HasMaxLength(2048).IsRequired();
         evaluation.HasOne(entity => entity.Job)
             .WithMany()

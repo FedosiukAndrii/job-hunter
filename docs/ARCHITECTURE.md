@@ -9,9 +9,10 @@
 
 Job Hunter — це .NET Worker Service, який постійно (раз на кілька хвилин)
 опитує джерела вакансій (DOU RSS, опційно LinkedIn через JobSpy), зберігає їх
-у локальній SQLite, оцінює за детермінованими правилами (та опційно за
-допомогою AI/Copilot) і надсилає відповідні вакансії в Telegram. AI та JobSpy
-— опційні; ядро (DOU → правила → SQLite → Telegram) має працювати без них.
+у локальній SQLite, відсіює явні невідповідності детермінованими hard filters,
+оцінює решту через обов'язковий Copilot і надсилає прийняті вакансії в Telegram.
+JobSpy є опційним, а Copilot потрібний для `run` і `run-once`: недоступний або
+невалідний аналіз зберігає вакансію, але відкладає сповіщення.
 
 ## 2. Діаграма шарів і проєктів
 
@@ -48,8 +49,8 @@ flowchart TB
         JobSpyApi["services/jobspy-api\nFastAPI sidecar (Python, LinkedIn)\nОКРЕМИЙ процес, без доступу до БД/Telegram"]
     end
 
-    subgraph AI["AI (опційно)"]
-        AiAbs["JobHunter.AI.Abstractions\nIJobAnalyzer, контракти,\nвалідація, NullJobAnalyzer"]
+    subgraph AI["AI (обов'язковий для кваліфікації)"]
+      AiAbs["JobHunter.AI.Abstractions\nIJobAnalyzer, контракти,\nвалідація"]
         Copilot["JobHunter.AI.Copilot\nCopilotJobAnalyzer,\nCopilotSessionRunner"]
     end
 
@@ -101,7 +102,7 @@ sequenceDiagram
     participant S as IJobSource (DOU / JobSpy)
     participant D as SQLite (через Infrastructure)
     participant E as DeterministicJobEvaluator
-    participant A as IJobAnalyzer (Copilot / Null)
+    participant A as IJobAnalyzer (Copilot)
     participant N as NotificationOutboxDispatcher
     participant T as Telegram
 
@@ -110,11 +111,11 @@ sequenceDiagram
     O->>S: отримати нові/змінені вакансії
     S-->>O: JobSourceResult (Succeeded/Partial/Blocked/Failed)
     O->>D: зберегти Job/JobObservation/JobRevision (ідемпотентно)
-    O->>E: оцінити за детермінованими правилами
-    E-->>O: RuleEvaluation (score, причини)
-    alt AI увімкнено і вакансія кандидат
-        O->>A: запит на аналіз (нейтралізовані дані)
-        A-->>O: AiAnalysis або відмова (fallback на правила)
+    O->>E: застосувати детерміновані hard filters
+    E-->>O: RuleEvaluation (причини)
+    alt hard filters пройдено
+      O->>A: обов'язковий запит на аналіз (нейтралізовані дані)
+      A-->>O: AiAnalysis або відкладене сповіщення
     end
     O->>D: зберегти оцінку/аналіз + намір сповіщення (outbox)
     N->>D: забрати неспроцесовані outbox-записи
@@ -143,7 +144,7 @@ sequenceDiagram
 - `Jobs/` — агрегат `Job`, `JobObservation` (спостереження з джерела),
   `JobRevision` (зміна вмісту), `JobFingerprint`/`JobKey` (дедуплікація),
   `JobLifecycle` (new/possibly_stale/expired/removed), `CanonicalJobUrl`.
-- `Evaluation/RuleEvaluation.cs` — результат детермінованої оцінки.
+- `Evaluation/RuleEvaluation.cs` — результат versioned hard-filter аудиту.
 - `AI/AiAnalysis.cs` — результат AI-аналізу як доменна модель (без залежності
   від конкретного AI SDK).
 - `Sources/` — `SourceName` та інші value-об'єкти джерел.
@@ -154,13 +155,13 @@ sequenceDiagram
 ### 4.3 `JobHunter.Application` — сценарії використання (use cases)
 - `Orchestration/ScanOrchestrator.cs` — центральний координатор цикла:
   бере прострочені підписки джерел → викликає `IJobSource` → зберігає
-  результати → оцінює → (опційно) аналізує AI → створює намір сповіщення
+  результати → застосовує hard filters → аналізує AI → створює намір сповіщення
   (outbox). Залежить лише від інтерфейсів (портів), не від конкретних
   реалізацій EF/HTTP/Telegram/AI.
 - `Sources/IJobSource.cs`, `JobSourceSubscriptions.cs` — контракт джерела
   вакансій і підписок на нього.
 - `Evaluation/` — `DeterministicJobEvaluator` (версійована рубрика
-  `rules-v1`), `JobQualificationPolicy` (пороги проходження),
+  `hard-filters-v1`), `JobQualificationPolicy` (AI fit threshold),
   `JobAnalysisRequestFactory` (формує запит для AI), інтерфейси сховищ
   оцінок/AI-аналізу.
 - `Notifications/NotificationOutboxDispatcher.cs` — читає durable outbox і
@@ -195,11 +196,9 @@ sequenceDiagram
   Docker або локальному venv), який реально ходить у LinkedIn через бібліотеку
   JobSpy й повертає `Succeeded/Partial/Blocked/Failed`.
 
-### 4.6 AI-аналіз (опційний шар)
-- `JobHunter.AI.Abstractions` — межа `IJobAnalyzer`, контракти запиту/відповіді,
-  валідатор надсилання (`JobAnalysisSubmissionValidator.cs`),
-  `NullJobAnalyzer.cs` — заглушка, коли AI вимкнено (система лишається
-  повністю функціональною).
+### 4.6 AI-аналіз (обов'язковий для кваліфікації)
+- `JobHunter.AI.Abstractions` — межа `IJobAnalyzer`, контракти запиту/відповіді
+  та валідатор надсилання (`JobAnalysisSubmissionValidator.cs`).
 - `JobHunter.AI.Copilot` — перший (і поки єдиний) реальний адаптер:
   `CopilotJobAnalyzer.cs`, `CopilotSessionRunner.cs`,
   `CopilotAnalysisPromptBuilder.cs`. Типи GitHub Copilot SDK не проникають у
@@ -256,7 +255,7 @@ flowchart LR
 | Питання | Куди дивитись |
 |---|---|
 | Як розбирається RSS DOU? | [src/JobHunter.JobSources.Dou/Parsing/](../src/JobHunter.JobSources.Dou/Parsing) |
-| Як рахується скор вакансії? | [src/JobHunter.Application/Evaluation/DeterministicJobEvaluator.cs](../src/JobHunter.Application/Evaluation/DeterministicJobEvaluator.cs) |
+| Як застосовуються hard filters та AI qualification? | [src/JobHunter.Application/Evaluation/](../src/JobHunter.Application/Evaluation) |
 | Як формується запит до AI? | [src/JobHunter.Application/Evaluation/JobAnalysisRequestFactory.cs](../src/JobHunter.Application/Evaluation/JobAnalysisRequestFactory.cs) |
 | Як відправляється Telegram-повідомлення? | [src/JobHunter.Notifications.Telegram/TelegramNotificationChannel.cs](../src/JobHunter.Notifications.Telegram/TelegramNotificationChannel.cs) |
 | Де EF-міграції та схема БД? | [src/JobHunter.Infrastructure/Persistence/](../src/JobHunter.Infrastructure/Persistence) |

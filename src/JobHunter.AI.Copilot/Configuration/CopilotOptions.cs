@@ -10,8 +10,6 @@ public sealed class CopilotOptions
 
     public string? Model { get; set; }
 
-    public bool FailStartupWhenModelUnavailable { get; set; }
-
     public int MaximumInputCharacters { get; set; } = 48_000;
 
     public int MaximumOutputCharacters { get; set; } = 4_000;

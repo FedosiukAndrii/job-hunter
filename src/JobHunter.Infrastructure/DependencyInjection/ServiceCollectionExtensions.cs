@@ -84,7 +84,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRuleEvaluationStore, EfRuleEvaluationStore>();
         services.AddSingleton<IAiAnalysisStore, EfAiAnalysisStore>();
         services.AddSingleton<IDataRetentionService, EfDataRetentionService>();
-        services.AddSingleton<DeterministicJobEvaluator>();
 
         return services;
     }
