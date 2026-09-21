@@ -175,6 +175,41 @@ public sealed class DoctorCompletionServiceTests
     }
 
     [Fact]
+    public async Task StartSynchronizesAConfigurationDisabledSourceBeforeCheckingItsState()
+    {
+        var subscriptionStore = new StubSourceSubscriptionStore(
+            [
+                new PersistedSourceSubscriptionState(
+                    SourceName.Dou,
+                    "doctor",
+                    false,
+                    SourceSubscriptionStatus.Disabled,
+                    "ConfigurationDisabled",
+                    null)
+            ]);
+        var lifetime = new StubHostApplicationLifetime();
+        var service = CreateService(
+            new StubDatabaseMaintenance(),
+            new StubJobAnalyzer(
+                new JobAnalyzerAvailability(true, "Ready", "fixture-model")),
+            new StubJobSpyStatusProbe(
+                new JobSpyReadinessResult(
+                    JobSpyReadiness.Disabled,
+                    "Disabled.",
+                    null,
+                    null)),
+            new StubTelegramSetupService(),
+            lifetime,
+            telegramEnabled: false,
+            subscriptionStore: subscriptionStore);
+
+        await service.StartAsync(CancellationToken.None);
+
+        Assert.Equal(1, subscriptionStore.SynchronizeCount);
+        Assert.True(lifetime.StopRequested);
+    }
+
+    [Fact]
     public async Task StartFailsBeforeTelegramRequestWhenDestinationIsDisabled()
     {
         var telegram = new StubTelegramSetupService();
@@ -215,7 +250,8 @@ public sealed class DoctorCompletionServiceTests
         bool telegramEnabled,
         PersistedSourceSubscriptionState? sourceState = null,
         NotificationDestinationStateSnapshot? destinationState = null,
-        IJobSource? source = null) =>
+        IJobSource? source = null,
+        StubSourceSubscriptionStore? subscriptionStore = null) =>
         new(
             database,
             new StubAppDataDirectory(),
@@ -227,8 +263,9 @@ public sealed class DoctorCompletionServiceTests
             new StubProfileLoader(),
             [new StubSubscriptionProvider()],
             [source ?? new StubJobSource()],
-            new StubSourceSubscriptionStore(
+            subscriptionStore ?? new StubSourceSubscriptionStore(
                 sourceState is null ? [] : [sourceState]),
+            TimeProvider.System,
             new StubDestinationStateStore(
                 destinationState
                     ?? (telegramEnabled
@@ -250,14 +287,42 @@ public sealed class DoctorCompletionServiceTests
             NullLogger<DoctorCompletionService>.Instance);
 
     private sealed class StubSourceSubscriptionStore(
-        IReadOnlyList<PersistedSourceSubscriptionState> states)
+        IReadOnlyList<PersistedSourceSubscriptionState> initialStates)
         : ISourceSubscriptionStore
     {
+        private IReadOnlyList<PersistedSourceSubscriptionState> states = initialStates;
+
+        public int SynchronizeCount { get; private set; }
+
         public Task SynchronizeAsync(
             IReadOnlyCollection<JobSourceSubscriptionDefinition> definitions,
             DateTimeOffset now,
-            CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SynchronizeCount++;
+            states = states
+                .Select(state =>
+                {
+                    var definition = definitions.SingleOrDefault(candidate =>
+                        candidate.Source == state.Source
+                        && string.Equals(
+                            candidate.SubscriptionKey,
+                            state.SubscriptionKey,
+                            StringComparison.Ordinal));
+                    return definition is { Enabled: true } && !state.IsEnabled
+                        ? state with
+                        {
+                            IsEnabled = true,
+                            Status = SourceSubscriptionStatus.Enabled,
+                            ReasonCode = null,
+                            Diagnostic = null
+                        }
+                        : state;
+                })
+                .ToArray();
+            return Task.CompletedTask;
+        }
 
         public Task<IReadOnlyList<DueJobSourceSubscription>> GetDueAsync(
             DateTimeOffset now,

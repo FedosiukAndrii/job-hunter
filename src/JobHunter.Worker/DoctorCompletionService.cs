@@ -21,6 +21,7 @@ internal sealed partial class DoctorCompletionService(
     IEnumerable<IJobSourceSubscriptionProvider> subscriptionProviders,
     IEnumerable<IJobSource> sources,
     ISourceSubscriptionStore sourceSubscriptionStore,
+    TimeProvider timeProvider,
     INotificationDestinationStateStore destinationStateStore,
     IJobAnalyzer jobAnalyzer,
     IJobSpyStatusProbe jobSpyStatusProbe,
@@ -39,8 +40,15 @@ internal sealed partial class DoctorCompletionService(
             cancellationToken);
         await profileLoader.LoadAsync(cancellationToken);
 
-        var subscriptions = subscriptionProviders
+        var definitions = subscriptionProviders
             .SelectMany(provider => provider.GetSubscriptions())
+            .ToArray();
+        await sourceSubscriptionStore.SynchronizeAsync(
+            definitions,
+            timeProvider.GetUtcNow(),
+            cancellationToken);
+
+        var subscriptions = definitions
             .Where(subscription => subscription.Enabled)
             .ToArray();
         CoreChecksPassed(
