@@ -4,6 +4,7 @@ using JobHunter.Application.Runtime;
 using JobHunter.Application.Profiles;
 using JobHunter.Application.Orchestration;
 using JobHunter.Application.Notifications;
+using JobHunter.Application.Sources;
 using JobHunter.Infrastructure.DependencyInjection;
 using JobHunter.JobSources.Dou.DependencyInjection;
 using JobHunter.JobSources.JobSpy.DependencyInjection;
@@ -80,6 +81,14 @@ internal static class ProgramEntry
             .Validate(
                 options => QuietHoursWindow.HasValidTimeZoneId(options.QuietHours.TimeZoneId),
                 "Worker:QuietHours:TimeZoneId must be a valid system time zone identifier.")
+            .ValidateOnStart();
+
+        builder.Services
+            .AddOptions<JobSearchOptions>()
+            .Bind(builder.Configuration.GetSection(JobSearchOptions.SectionName))
+            .Validate(
+                options => options.LookbackHours is >= 1 and <= 8760,
+                "Search:LookbackHours must be between 1 and 8760.")
             .ValidateOnStart();
 
         builder.Services

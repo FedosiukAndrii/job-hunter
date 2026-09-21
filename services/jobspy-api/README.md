@@ -1,13 +1,14 @@
 # JobSpy API
 
-This is the optional Python 3.11+ sidecar for the experimental LinkedIn source.
-The .NET worker remains the only SQLite writer and does not require this service.
+This is the Python 3.11+ sidecar for the experimental LinkedIn source. The
+default Worker configuration enables this source. The .NET worker remains the
+only SQLite writer.
 The sidecar accepts no profile or CV, database path, Telegram token, cookie,
 proxy, or credential fields.
 
-LinkedIn is disabled in the worker by default and requires explicit risk
-acknowledgement. A 403, 429, sign-in response, or challenge blocks this source
-with a long backoff. Do not use this service to evade source controls.
+The default Worker configuration enables LinkedIn and acknowledges its
+experimental risk. A 403, 429, sign-in response, or challenge blocks this
+source with a long backoff. Do not use this service to evade source controls.
 
 ## Native setup and run
 

@@ -59,24 +59,6 @@ public sealed class JobSpyOptionsValidatorTests
             failure => failure.Contains("between 1 and 50", StringComparison.Ordinal));
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(8_761)]
-    public void ValidateRejectsAgeLimitOutsideSidecarContract(int hoursOld)
-    {
-        var options = new JobSpyOptions
-        {
-            HoursOld = hoursOld
-        };
-
-        var result = new JobSpyOptionsValidator().Validate(null, options);
-
-        Assert.True(result.Failed);
-        Assert.Contains(
-            result.Failures,
-            failure => failure.Contains("HoursOld", StringComparison.Ordinal));
-    }
-
     [Fact]
     public void ValidateRejectsOverlongOptionalLocation()
     {

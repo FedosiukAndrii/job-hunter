@@ -27,7 +27,8 @@ public sealed class SourceIsolationTests
                 {
                     Enabled = true,
                     ExperimentalAcknowledged = true
-                }));
+                }),
+            Options.Create(new JobSearchOptions()));
 
         var douResponse = new HttpResponseMessage(HttpStatusCode.OK)
         {
@@ -43,8 +44,10 @@ public sealed class SourceIsolationTests
         using var dou = new DouJobSource(
             new HttpClient(new StubHttpMessageHandler(_ => douResponse)),
             new DouRssParser(),
-            TimeProvider.System,
-            Options.Create(new DouOptions()));
+            new FixedTimeProvider(
+                new DateTimeOffset(2026, 9, 15, 10, 0, 0, TimeSpan.Zero)),
+            Options.Create(new DouOptions()),
+            Options.Create(new JobSearchOptions()));
 
         var jobSpyTask = jobSpy.FetchAsync(
             new JobSourceRequest(
@@ -78,5 +81,10 @@ public sealed class SourceIsolationTests
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
             Task.FromResult(responseFactory(request));
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }

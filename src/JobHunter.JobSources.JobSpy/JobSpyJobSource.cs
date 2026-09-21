@@ -15,7 +15,8 @@ namespace JobHunter.JobSources.JobSpy;
 public sealed class JobSpyJobSource(
     HttpClient httpClient,
     TimeProvider timeProvider,
-    IOptions<JobSpyOptions> options)
+    IOptions<JobSpyOptions> options,
+    IOptions<JobSearchOptions> searchOptions)
     : IJobSource, IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -63,7 +64,7 @@ public sealed class JobSpyJobSource(
                     ResultsWanted = Math.Min(
                         request.MaximumItems,
                         options.Value.MaximumResults),
-                    HoursOld = options.Value.HoursOld
+                    HoursOld = searchOptions.Value.LookbackHours
                 },
                 JsonOptions,
                 timeout.Token);

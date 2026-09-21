@@ -64,7 +64,7 @@ public sealed class JobSpyJobSourceTests
                         "{\"status\":\"succeeded\",\"jobs\":[]}");
                 }),
             location: " Ukraine ",
-            hoursOld: 48);
+            lookbackHours: 48);
 
         var result = await source.FetchAsync(CreateRequest(), CancellationToken.None);
 
@@ -275,7 +275,7 @@ public sealed class JobSpyJobSourceTests
         HttpMessageHandler handler,
         int maximumResponseBytes = 2 * 1024 * 1024,
         string? location = null,
-        int hoursOld = 168) =>
+        int lookbackHours = 24) =>
         new(
             new HttpClient(handler),
             TimeProvider.System,
@@ -286,12 +286,16 @@ public sealed class JobSpyJobSourceTests
                     ExperimentalAcknowledged = true,
                     Endpoint = "http://127.0.0.1:8080/",
                     Location = location,
-                    HoursOld = hoursOld,
                     MinimumIntervalMinutes = 60,
                     RequestTimeoutSeconds = 5,
                     MaximumResults = 50,
                     MaximumResponseBytes = maximumResponseBytes,
                     BlockedBackoffHours = 24
+                }),
+            Options.Create(
+                new JobSearchOptions
+                {
+                    LookbackHours = lookbackHours
                 }));
 
     private static JobSourceRequest CreateRequest() =>

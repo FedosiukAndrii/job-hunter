@@ -13,7 +13,8 @@ public sealed class DouJobSource(
     HttpClient httpClient,
     DouRssParser parser,
     TimeProvider timeProvider,
-    IOptions<DouOptions> options)
+    IOptions<DouOptions> options,
+    IOptions<JobSearchOptions> searchOptions)
     : IJobSource, IDisposable
 {
     private static readonly TimeSpan[] RetryDelays =
@@ -93,7 +94,7 @@ public sealed class DouJobSource(
                 parseResult.Diagnostics.Count == 0
                     ? SourceRunStatus.Succeeded
                     : SourceRunStatus.Partial,
-                parseResult.Records,
+                FilterToSearchWindow(parseResult.Records, now),
                 cursor,
                 false,
                 nextPoll,
@@ -253,6 +254,18 @@ public sealed class DouJobSource(
         && (contentType.MediaType.Equals("application/rss+xml", StringComparison.OrdinalIgnoreCase)
             || contentType.MediaType.Equals("application/xml", StringComparison.OrdinalIgnoreCase)
             || contentType.MediaType.Equals("text/xml", StringComparison.OrdinalIgnoreCase));
+
+    private JobSourceRecord[] FilterToSearchWindow(
+        IReadOnlyList<JobSourceRecord> records,
+        DateTimeOffset now)
+    {
+        var earliestPublishedAtUtc = now.AddHours(-searchOptions.Value.LookbackHours);
+        return records
+            .Where(record => record.PublishedAtUtc is { } publishedAtUtc
+                && publishedAtUtc >= earliestPublishedAtUtc
+                && publishedAtUtc <= now)
+            .ToArray();
+    }
 
     private static void ValidateEndpoint(Uri endpoint)
     {

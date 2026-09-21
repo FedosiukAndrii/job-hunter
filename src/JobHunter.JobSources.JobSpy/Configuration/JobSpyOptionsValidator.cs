@@ -47,12 +47,6 @@ public sealed class JobSpyOptionsValidator : IValidateOptions<JobSpyOptions>
                 "Sources:LinkedInJobSpy:Location must not contain non-whitespace control characters.");
         }
 
-        if (options.HoursOld is < 1 or > 8760)
-        {
-            failures.Add(
-                "Sources:LinkedInJobSpy:HoursOld must be between 1 and 8760.");
-        }
-
         if (options.MinimumIntervalMinutes is < 60 or > 10080)
         {
             failures.Add(

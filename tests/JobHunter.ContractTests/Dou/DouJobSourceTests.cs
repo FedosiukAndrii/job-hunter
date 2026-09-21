@@ -181,10 +181,38 @@ public sealed class DouJobSourceTests
         Assert.Empty(result.Jobs);
     }
 
+    [Fact]
+    public async Task FetchAsyncExcludesVacanciesOutsideConfiguredSearchWindow()
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(
+                File.ReadAllBytes(
+                    Path.Combine(
+                        AppContext.BaseDirectory,
+                        "Fixtures",
+                        "Dou",
+                        "standard-dotnet.xml")))
+        };
+        response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/rss+xml");
+        using var source = CreateSource(
+            new StubHttpMessageHandler(_ => response),
+            lookbackHours: 24,
+            timeProvider: new FixedTimeProvider(
+                new DateTimeOffset(2026, 9, 16, 10, 0, 0, TimeSpan.Zero)));
+
+        var result = await source.FetchAsync(CreateRequest(), CancellationToken.None);
+
+        Assert.Equal(SourceRunStatus.Succeeded, result.Status);
+        Assert.Empty(result.Jobs);
+    }
+
     private static DouJobSource CreateSource(
         HttpMessageHandler handler,
         int requestTimeoutSeconds = 5,
-        int maximumResponseBytes = 2 * 1024 * 1024)
+        int maximumResponseBytes = 2 * 1024 * 1024,
+        int lookbackHours = 24,
+        TimeProvider? timeProvider = null)
     {
         var options = Options.Create(
             new DouOptions
@@ -198,8 +226,13 @@ public sealed class DouJobSourceTests
         return new DouJobSource(
             new HttpClient(handler),
             new DouRssParser(),
-            TimeProvider.System,
-            options);
+            timeProvider ?? TimeProvider.System,
+            options,
+            Options.Create(
+                new JobSearchOptions
+                {
+                    LookbackHours = lookbackHours
+                }));
     }
 
     private static JobSourceRequest CreateRequest(SourceCursorValue? cursor = null) =>
@@ -228,5 +261,10 @@ public sealed class DouJobSourceTests
             HttpRequestMessage request,
             CancellationToken cancellationToken) =>
             responseFactory(request, cancellationToken);
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 }
