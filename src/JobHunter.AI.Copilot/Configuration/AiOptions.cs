@@ -10,7 +10,7 @@ public sealed class AiOptions
 
     public double MinimumConfidence { get; set; } = 0.65;
 
-    public int MinimumFitScore { get; set; } = 75;
+    public int MinimumFitScore { get; set; } = 65;
 
     public int TransientFailureRetryMinutes { get; set; } = 60;
 }

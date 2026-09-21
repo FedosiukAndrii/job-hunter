@@ -58,4 +58,54 @@ public sealed class JobSpyOptionsValidatorTests
             result.Failures,
             failure => failure.Contains("between 1 and 50", StringComparison.Ordinal));
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(8_761)]
+    public void ValidateRejectsAgeLimitOutsideSidecarContract(int hoursOld)
+    {
+        var options = new JobSpyOptions
+        {
+            HoursOld = hoursOld
+        };
+
+        var result = new JobSpyOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains("HoursOld", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidateRejectsOverlongOptionalLocation()
+    {
+        var options = new JobSpyOptions
+        {
+            Location = new string('x', 257)
+        };
+
+        var result = new JobSpyOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains("Location", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ValidateRejectsControlCharactersInOptionalLocation()
+    {
+        var options = new JobSpyOptions
+        {
+            Location = "Ukraine\0"
+        };
+
+        var result = new JobSpyOptionsValidator().Validate(null, options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(
+            result.Failures,
+            failure => failure.Contains("Location", StringComparison.Ordinal));
+    }
 }

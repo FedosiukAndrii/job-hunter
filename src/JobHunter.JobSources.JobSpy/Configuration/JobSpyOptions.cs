@@ -12,6 +12,10 @@ public sealed class JobSpyOptions
 
     public string SearchTerm { get; set; } = ".NET";
 
+    public string? Location { get; set; }
+
+    public int HoursOld { get; set; } = 168;
+
     public int MinimumIntervalMinutes { get; set; } = 60;
 
     public int RequestTimeoutSeconds { get; set; } = 45;

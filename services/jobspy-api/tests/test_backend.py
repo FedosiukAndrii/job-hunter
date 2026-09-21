@@ -62,7 +62,7 @@ def test_backend_calls_lazy_jobspy_boundary_without_evasion_fields(
         "location": "Remote",
         "results_wanted": 10,
         "hours_old": 24,
-        "description_format": "plain",
+        "description_format": "markdown",
         "linkedin_fetch_description": True,
         "verbose": 0,
     }

@@ -123,6 +123,28 @@ Configuration precedence follows standard .NET configuration: safe
 `appsettings.json` defaults, optional environment-specific values, environment
 variables, and command line. Validate required values at startup.
 
+### Scheduled quiet hours
+
+The default `Worker:QuietHours` window is 22:00 (inclusive) through 09:00
+(exclusive). During this window the scheduled source scans and notification
+outbox dispatch are paused; durable queued notifications remain pending until
+the window closes. Explicit operator commands such as `run-once` are not
+restricted.
+
+The default time zone is Ukraine (`Europe/Kyiv`), including its daylight-saving
+time changes. Override it with an IANA or Windows time-zone identifier supported
+by .NET when the worker is deployed elsewhere, for example:
+
+```powershell
+dotnet run --project src\JobHunter.Worker -- run `
+  --Worker:QuietHours:TimeZoneId=America/Detroit `
+  --Worker:QuietHours:StartLocalTime=22:00 `
+  --Worker:QuietHours:EndLocalTime=09:00
+```
+
+The start and end must differ. Windows that cross midnight, such as the default,
+are supported. Set `Worker:QuietHours:Enabled=false` to disable the pause.
+
 Secrets must not be in `appsettings.json`, a committed `.env`, source control,
 SQLite, logs, or crash dumps:
 
@@ -185,8 +207,9 @@ characters, 4,000 validated output characters, 60 seconds, concurrency `1`,
 queue capacity `32`, one transient retry, and one corrective retry after a
 locally invalid structured output. Confidence below `0.65` is stored as
 insufficient and creates no notification intent. A validated `overallFit` score
-at or above `AI:MinimumFitScore` (default `75`) qualifies the vacancy; a lower
-score is an AI rejection.
+at or above `AI:MinimumFitScore` (default `65`) qualifies the vacancy; a lower
+score is an AI rejection. Override the threshold for a run with, for example,
+`--AI:MinimumFitScore=75`.
 Debug Telegram messages show actual token usage and AI credits only when the SDK
 returns them; they do not infer a USD price.
 Transient failure states become eligible for a new attempt after 60 minutes.
@@ -262,12 +285,20 @@ dotnet run --project src\JobHunter.Worker -- run `
   --Profile:FilePath C:\JobHunterData\profile.yaml `
   --Sources:LinkedInJobSpy:Enabled=true `
   --Sources:LinkedInJobSpy:ExperimentalAcknowledged=true `
-  --Sources:LinkedInJobSpy:Endpoint=http://127.0.0.1:8080/
+  --Sources:LinkedInJobSpy:Endpoint=http://127.0.0.1:8080/ `
+  --Sources:LinkedInJobSpy:SearchTerm=.NET `
+  --Sources:LinkedInJobSpy:Location=Ukraine `
+  --Sources:LinkedInJobSpy:HoursOld=168
 ```
 
 The scheduled pipeline invokes the adapter when it is enabled and due.
 `run-once --source linkedin-jobspy` can invoke it immediately only while the
 persisted subscription is enabled and not blocked.
+
+`SearchTerm` is required; `Location` is optional (omit it for LinkedIn's broad
+search), and `HoursOld` is the maximum posting age from 1 through 8,760 hours
+(default: 168). These are the only search fields passed from the Worker to the
+sidecar; no profile, CV, cookie, proxy, or credential is ever forwarded.
 
 If the sidecar is unavailable, only that source is degraded. The DOU source and
 all downstream core behavior remain operational.

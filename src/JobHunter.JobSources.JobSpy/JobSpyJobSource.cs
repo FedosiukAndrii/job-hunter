@@ -59,9 +59,11 @@ public sealed class JobSpyJobSource(
                 {
                     Source = "linkedin",
                     SearchTerm = RequireQuery(request.QueryId),
+                    Location = NormalizeOptionalSearchText(options.Value.Location),
                     ResultsWanted = Math.Min(
                         request.MaximumItems,
-                        options.Value.MaximumResults)
+                        options.Value.MaximumResults),
+                    HoursOld = options.Value.HoursOld
                 },
                 JsonOptions,
                 timeout.Token);
@@ -313,6 +315,9 @@ public sealed class JobSpyJobSource(
 
         return trimmed;
     }
+
+    private static string? NormalizeOptionalSearchText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private async Task<byte[]> ReadBoundedAsync(
         HttpContent content,

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using JobHunter.Application.Sources;
 using JobHunter.Domain.Sources;
 using JobHunter.JobSources.JobSpy;
@@ -44,6 +45,37 @@ public sealed class JobSpyJobSourceTests
         Assert.Equal(SourceRunStatus.Succeeded, result.Status);
         Assert.Equal("li-123", job.SourceJobId?.Value);
         Assert.Equal("https://www.linkedin.com/jobs/view/123", job.CanonicalUrl.ToString());
+    }
+
+    [Fact]
+    public async Task FetchAsyncForwardsConfiguredSearchBoundsToSidecar()
+    {
+        string? requestBody = null;
+        using var source = CreateSource(
+            new StubHttpMessageHandler(
+                request =>
+                {
+                    requestBody = request.Content!
+                        .ReadAsStringAsync()
+                        .GetAwaiter()
+                        .GetResult();
+                    return JsonResponse(
+                        HttpStatusCode.OK,
+                        "{\"status\":\"succeeded\",\"jobs\":[]}");
+                }),
+            location: " Ukraine ",
+            hoursOld: 48);
+
+        var result = await source.FetchAsync(CreateRequest(), CancellationToken.None);
+
+        Assert.Equal(SourceRunStatus.Succeeded, result.Status);
+        using var document = JsonDocument.Parse(requestBody!);
+        var payload = document.RootElement;
+        Assert.Equal("linkedin", payload.GetProperty("source").GetString());
+        Assert.Equal(".NET", payload.GetProperty("searchTerm").GetString());
+        Assert.Equal("Ukraine", payload.GetProperty("location").GetString());
+        Assert.Equal(20, payload.GetProperty("resultsWanted").GetInt32());
+        Assert.Equal(48, payload.GetProperty("hoursOld").GetInt32());
     }
 
     [Fact]
@@ -241,7 +273,9 @@ public sealed class JobSpyJobSourceTests
 
     private static JobSpyJobSource CreateSource(
         HttpMessageHandler handler,
-        int maximumResponseBytes = 2 * 1024 * 1024) =>
+        int maximumResponseBytes = 2 * 1024 * 1024,
+        string? location = null,
+        int hoursOld = 168) =>
         new(
             new HttpClient(handler),
             TimeProvider.System,
@@ -251,6 +285,8 @@ public sealed class JobSpyJobSourceTests
                     Enabled = true,
                     ExperimentalAcknowledged = true,
                     Endpoint = "http://127.0.0.1:8080/",
+                    Location = location,
+                    HoursOld = hoursOld,
                     MinimumIntervalMinutes = 60,
                     RequestTimeoutSeconds = 5,
                     MaximumResults = 50,

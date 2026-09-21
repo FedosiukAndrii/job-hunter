@@ -32,6 +32,27 @@ public sealed class JobSpyOptionsValidator : IValidateOptions<JobSpyOptions>
                 "Sources:LinkedInJobSpy:SearchTerm must contain between 1 and 256 characters when the source is enabled.");
         }
 
+        if (!string.IsNullOrWhiteSpace(options.Location)
+            && options.Location.Trim().Length > 256)
+        {
+            failures.Add(
+                "Sources:LinkedInJobSpy:Location must contain at most 256 characters when supplied.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Location)
+            && options.Location.Any(character =>
+                char.IsControl(character) && !char.IsWhiteSpace(character)))
+        {
+            failures.Add(
+                "Sources:LinkedInJobSpy:Location must not contain non-whitespace control characters.");
+        }
+
+        if (options.HoursOld is < 1 or > 8760)
+        {
+            failures.Add(
+                "Sources:LinkedInJobSpy:HoursOld must be between 1 and 8760.");
+        }
+
         if (options.MinimumIntervalMinutes is < 60 or > 10080)
         {
             failures.Add(

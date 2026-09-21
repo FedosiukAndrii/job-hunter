@@ -8,7 +8,11 @@ internal sealed record JobSpySearchRequest
 
     public required string SearchTerm { get; init; }
 
+    public string? Location { get; init; }
+
     public int ResultsWanted { get; init; }
+
+    public int HoursOld { get; init; }
 }
 
 internal sealed record JobSpySearchResponse

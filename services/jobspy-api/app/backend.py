@@ -157,7 +157,10 @@ class PythonJobSpyBackend:
                         location=request.location,
                         results_wanted=request.results_wanted,
                         hours_old=request.hours_old,
-                        description_format="plain",
+                        # python-jobspy 1.1.82 accepts markdown or HTML only.
+                        # Markdown keeps descriptions as text for the downstream
+                        # normalizer without requesting unsupported output.
+                        description_format="markdown",
                         linkedin_fetch_description=True,
                         verbose=0,
                     )
