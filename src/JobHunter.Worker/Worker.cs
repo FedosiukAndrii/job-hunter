@@ -6,6 +6,7 @@ public sealed partial class Worker(
     ILogger<Worker> logger,
     TimeProvider timeProvider,
     ScanOrchestrator scanOrchestrator,
+    QuietHoursWindow quietHours,
     Microsoft.Extensions.Options.IOptions<WorkerOptions> options)
     : BackgroundService
 {
@@ -22,22 +23,25 @@ public sealed partial class Worker(
             {
                 try
                 {
-                    var summary = await scanOrchestrator.RunDueAsync(stoppingToken);
-                    if (summary.DueCount > 0)
+                    if (!quietHours.IsQuiet(timeProvider.GetUtcNow()))
                     {
-                        SchedulerTickCompleted(
-                            summary.DueCount,
-                            summary.StartedCount,
-                            summary.SucceededCount,
-                            summary.PartialCount,
-                            summary.BlockedCount,
-                            summary.FailedCount,
-                            summary.ObservedCount,
-                            summary.NotificationIntentCount,
-                            summary.SuppressedNotificationIntentCount,
-                            summary.AiAnalysisCount,
-                            summary.AcceptedAiAnalysisCount,
-                            summary.DeferredAiAnalysisCount);
+                        var summary = await scanOrchestrator.RunDueAsync(stoppingToken);
+                        if (summary.DueCount > 0)
+                        {
+                            SchedulerTickCompleted(
+                                summary.DueCount,
+                                summary.StartedCount,
+                                summary.SucceededCount,
+                                summary.PartialCount,
+                                summary.BlockedCount,
+                                summary.FailedCount,
+                                summary.ObservedCount,
+                                summary.NotificationIntentCount,
+                                summary.SuppressedNotificationIntentCount,
+                                summary.AiAnalysisCount,
+                                summary.AcceptedAiAnalysisCount,
+                                summary.DeferredAiAnalysisCount);
+                        }
                     }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

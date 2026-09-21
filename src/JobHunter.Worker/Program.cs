@@ -70,6 +70,16 @@ internal static class ProgramEntry
             .Validate(
                 options => options.NotificationMaximumRetrySeconds is >= 60 and <= 86400,
                 "Worker:NotificationMaximumRetrySeconds must be between 60 and 86400.")
+            .Validate(
+                options => options.QuietHours is not null,
+                "Worker:QuietHours must be configured.")
+            .Validate(
+                options => !options.QuietHours.Enabled
+                    || options.QuietHours.StartLocalTime != options.QuietHours.EndLocalTime,
+                "Worker:QuietHours start and end times must differ when quiet hours are enabled.")
+            .Validate(
+                options => QuietHoursWindow.HasValidTimeZoneId(options.QuietHours.TimeZoneId),
+                "Worker:QuietHours:TimeZoneId must be a valid system time zone identifier.")
             .ValidateOnStart();
 
         builder.Services
@@ -80,6 +90,7 @@ internal static class ProgramEntry
                         TimeSpan.FromSeconds(workerOptions.Value.ShutdownTimeoutSeconds));
 
         builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+        builder.Services.AddSingleton<QuietHoursWindow>();
         builder.Services.AddSingleton(command);
         builder.Services.AddJobHunterInfrastructure(builder.Configuration);
         builder.Services.AddCopilotJobAnalysis(builder.Configuration);

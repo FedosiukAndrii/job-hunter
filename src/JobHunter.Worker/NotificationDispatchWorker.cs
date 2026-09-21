@@ -7,6 +7,7 @@ internal sealed partial class NotificationDispatchWorker(
     NotificationOutboxDispatcher dispatcher,
     TimeProvider timeProvider,
     IOptions<WorkerOptions> options,
+    QuietHoursWindow quietHours,
     ILogger<NotificationDispatchWorker> logger)
     : BackgroundService
 {
@@ -22,29 +23,32 @@ internal sealed partial class NotificationDispatchWorker(
             {
                 try
                 {
-                    var summary = await dispatcher.DispatchDueAsync(stoppingToken);
-                    if (summary is
+                    if (!quietHours.IsQuiet(timeProvider.GetUtcNow()))
                     {
-                        SentCount: > 0
-                    }
-                        or
-                    {
-                        RetryCount: > 0
-                    }
-                        or
-                    {
-                        UnknownCount: > 0
-                    }
-                        or
-                    {
-                        PermanentFailureCount: > 0
-                    })
-                    {
-                        DispatchCompleted(
-                            summary.SentCount,
-                            summary.RetryCount,
-                            summary.UnknownCount,
-                            summary.PermanentFailureCount);
+                        var summary = await dispatcher.DispatchDueAsync(stoppingToken);
+                        if (summary is
+                        {
+                            SentCount: > 0
+                        }
+                            or
+                        {
+                            RetryCount: > 0
+                        }
+                            or
+                        {
+                            UnknownCount: > 0
+                        }
+                            or
+                        {
+                            PermanentFailureCount: > 0
+                        })
+                        {
+                            DispatchCompleted(
+                                summary.SentCount,
+                                summary.RetryCount,
+                                summary.UnknownCount,
+                                summary.PermanentFailureCount);
+                        }
                     }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

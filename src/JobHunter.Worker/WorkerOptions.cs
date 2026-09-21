@@ -23,4 +23,17 @@ public sealed class WorkerOptions
     public int NotificationMaximumAttempts { get; set; } = 5;
 
     public int NotificationMaximumRetrySeconds { get; set; } = 1800;
+
+    public WorkerQuietHoursOptions QuietHours { get; set; } = new();
+}
+
+public sealed class WorkerQuietHoursOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    public TimeOnly StartLocalTime { get; set; } = new(22, 0);
+
+    public TimeOnly EndLocalTime { get; set; } = new(9, 0);
+
+    public string? TimeZoneId { get; set; } = "Europe/Kyiv";
 }
