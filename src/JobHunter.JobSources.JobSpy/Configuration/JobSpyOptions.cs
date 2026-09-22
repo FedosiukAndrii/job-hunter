@@ -16,7 +16,7 @@ public sealed class JobSpyOptions
 
     public int MinimumIntervalMinutes { get; set; } = 60;
 
-    public int RequestTimeoutSeconds { get; set; } = 45;
+    public int RequestTimeoutSeconds { get; set; } = 165;
 
     public int MaximumResults { get; set; } = 50;
 

@@ -86,7 +86,7 @@ Example blocked response:
 }
 ```
 
-The LinkedIn policy uses one backend worker and a 40-second service timeout.
+The LinkedIn policy uses one backend worker and a 160-second service timeout.
 An in-flight blocking library call cannot be interrupted safely, so it retains
 the sole worker until it exits; no second LinkedIn call runs concurrently.
 
@@ -94,7 +94,7 @@ Safe optional environment settings:
 
 | Name | Default | Bounds |
 |---|---:|---:|
-| `JOBSPY_LINKEDIN_TIMEOUT_SECONDS` | 40 | 1-300 |
+| `JOBSPY_LINKEDIN_TIMEOUT_SECONDS` | 160 | 1-300 |
 | `JOBSPY_BLOCKED_RETRY_SECONDS` | 86400 | 3600-604800 |
 | `JOBSPY_TRANSIENT_RETRY_SECONDS` | 900 | 60-86400 |
 | `JOBSPY_MALFORMED_RETRY_SECONDS` | 3600 | 300-604800 |

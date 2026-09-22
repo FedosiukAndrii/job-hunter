@@ -27,7 +27,7 @@ def _read_int(
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    linkedin_timeout_seconds: float = 40
+    linkedin_timeout_seconds: float = 160
     blocked_retry_after_seconds: int = 86_400
     transient_retry_after_seconds: int = 900
     malformed_retry_after_seconds: int = 3_600
@@ -54,7 +54,7 @@ class Settings:
         return cls(
             linkedin_timeout_seconds=_read_int(
                 "JOBSPY_LINKEDIN_TIMEOUT_SECONDS",
-                40,
+                160,
                 1,
                 300,
             ),
