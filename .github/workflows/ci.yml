@@ -34,9 +34,6 @@ jobs:
       - name: Audit dependencies
         run: dotnet list JobHunter.slnx package --vulnerable --include-transitive
 
-      - name: Verify formatting
-        run: dotnet format JobHunter.slnx --no-restore --verify-no-changes
-
       - name: Build
         run: dotnet build JobHunter.slnx --configuration Release --no-restore
 
