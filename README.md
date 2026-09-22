@@ -1,59 +1,42 @@
 # Job Hunter
 
-A local .NET application that reads .NET vacancies from DOU, filters them
-against your profile, evaluates the match with GitHub Copilot, and sends
-relevant results to Telegram.
+A local .NET Worker that finds .NET vacancies on DOU and LinkedIn, matches
+them to your profile with GitHub Copilot, and sends suitable jobs to Telegram.
 
 ```text
-DOU → local Worker + SQLite → filters → Copilot → Telegram
+DOU + LinkedIn JobSpy → SQLite → filters + Copilot → Telegram
 ```
 
-The default workflow runs DOU and the local LinkedIn JobSpy sidecar. It does
-not require Docker. Your profile, CV, SQLite database, Worker state, and
-Copilot workspace remain on your machine. Copilot and Telegram requests require
-an internet connection.
+Docker is not required. Your profile, CV, SQLite database, and Worker state
+stay on your machine; Copilot and Telegram need an internet connection.
 
 ## Prerequisites
 
-- **.NET SDK 10.0.300 or later** — the baseline version is defined in
-  `global.json`.
-- A GitHub account with an active Copilot subscription. Install the
-  [GitHub CLI (`gh`)](https://cli.github.com/) to select and verify the local
-  GitHub account:
+- **.NET SDK 10.0.300+** (see `global.json`).
+- GitHub Copilot subscription, [GitHub CLI](https://cli.github.com/), and
+  [Copilot CLI](https://github.com/github/copilot-cli#installation):
 
   ```bash
   gh auth login
-  gh auth status
-  ```
-
-- The active account reported by `gh auth status` must be the one with the
-  Copilot entitlement. Also install the [GitHub Copilot CLI](https://github.com/github/copilot-cli#installation)
-  and authenticate its local session:
-
-  ```bash
   copilot auth login
   ```
 
-  The Worker uses the credentials saved by `copilot auth login`; `gh auth login`
-  alone does not provide the stored Copilot credentials required by the SDK.
-  The .NET SDK manages the compatible Copilot runtime for the Worker. Do not add
-  a GitHub token to project files or Worker command-line arguments.
-- A Telegram bot created with [@BotFather](https://t.me/BotFather) and a
-  private chat with it. Telegram is enabled by default, so send the bot `/start`
-  before setup and configure its credentials with the provided User Secrets
-  script.
+  Use the same GitHub account for both; the Worker uses the credentials from
+  `copilot auth login`.
+- A Telegram bot from [@BotFather](https://t.me/BotFather). Send it `/start`;
+  the setup script will request its credentials.
 - **Python 3.11+** for the local LinkedIn JobSpy sidecar. LinkedIn is enabled
   by default. To run DOU only, pass `--Sources:LinkedInJobSpy:Enabled=false`
   to every Worker command.
 
-For a private chat, the required `chat ID` is your numeric Telegram user ID.
-You can retrieve it with an ID bot such as [@userinfobot](https://t.me/userinfobot).
+For a private chat, use your numeric Telegram user ID as the chat ID (for
+example, retrieve it with [@userinfobot](https://t.me/userinfobot)).
 
 ## Profile and CV format
 
 Start with [`deploy/examples/profile.yaml`](deploy/examples/profile.yaml) and
-[`deploy/examples/cv.md`](deploy/examples/cv.md). `schemaVersion` and
-`targetTitles` are required; the remaining fields refine matching.
+[`deploy/examples/cv.md`](deploy/examples/cv.md). Only `schemaVersion` and
+`targetTitles` are required; other fields refine matching.
 
 ```yaml
 schemaVersion: 2
@@ -73,36 +56,15 @@ aiPreferences:
 supplementalCvPath: cv.md # relative to this YAML file, or an absolute path
 ```
 
-`requiredSkills`, `hardFilters`, and `aiPreferences` are optional. Use
-`aiPreferences` for concise matching preferences (up to 12 entries), not facts
-that contradict the CV. The full field definition is in
-[`schemas/candidate-profile.schema.json`](schemas/candidate-profile.schema.json).
-
-`supplementalCvPath` must point to a `.md` file. The Markdown has no required
-heading layout, but this compact structure gives Copilot useful evidence:
-
-```md
-# Your name
-
-## Summary
-Senior backend engineer focused on .NET services and APIs.
-
-## Skills
-- C#, .NET, ASP.NET Core, SQL, Azure
-
-## Experience
-### Company — Senior Backend Engineer
-- Built and maintained production APIs and background services.
-
-## Education and languages
-- BSc in Computer Science; English: Upper-Intermediate.
-```
+`requiredSkills`, `hardFilters`, and `aiPreferences` are optional. See the
+[profile schema](schemas/candidate-profile.schema.json) for all fields.
+`supplementalCvPath` must point to a Markdown CV; a factual summary, skills,
+experience, education, and languages are sufficient.
 
 ## Quick start: macOS / Linux
 
-Start JobSpy in one terminal and keep it running. Then run the Worker commands
-in a second terminal from the repository root. Keep application data outside
-the Git checkout and cloud-synced folders.
+Start JobSpy in one terminal, then run the Worker commands from the repository
+root in a second. Keep application data outside the Git checkout.
 
 ```bash
 # Terminal 1: local LinkedIn JobSpy sidecar
@@ -113,7 +75,6 @@ python3.11 -m venv .venv
 ```
 
 ```bash
-# Terminal 2: Worker, from the repository root
 # macOS
 data_dir="$HOME/Library/Application Support/JobHunter"
 
@@ -160,7 +121,6 @@ py -3.11 -m venv .venv
 ```
 
 ```powershell
-# Terminal 2: Worker, from the repository root
 $dataDir = Join-Path $env:LOCALAPPDATA 'JobHunter'
 New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
 Copy-Item deploy\examples\profile.yaml, deploy\examples\cv.md -Destination $dataDir
@@ -180,32 +140,20 @@ for the current process only, then rerun `.\scripts\set-user-secrets.ps1`.
 
 ## Secrets and local Copilot authentication
 
-`scripts/set-user-secrets.sh` and `scripts/set-user-secrets.ps1` save
-`Telegram:BotToken` and `Telegram:ChatId` to [.NET User Secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets).
-Those values belong to the current OS user and are not written to
-`appsettings.json`, Git, or SQLite. Run the relevant script again to replace
-either value.
+The setup scripts save `Telegram:BotToken` and `Telegram:ChatId` to
+[.NET User Secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets),
+not Git, `appsettings.json`, or SQLite. Do not put a token in `.env`, a
+profile, documentation, or Worker arguments. Rerun the script to change it.
 
-User Secrets are appropriate for local development and prevent accidental
-commits, but they are not a complete secret store for a shared server. Never
-pass a Telegram token as a Worker argument or save it in `.env`, a profile,
-or documentation.
-
-The Copilot entitlement comes from the GitHub account used by the local Copilot
-sign-in. If `doctor` reports that the configured `gpt-5.6-luna` model is
-unavailable for your subscription, explicitly choose an available model, for
-example by adding `--AI:Copilot:Model=auto` to both `doctor` and `run`.
+If `doctor` reports that the configured Copilot model is unavailable, add
+`--AI:Copilot:Model=auto` to both `doctor` and `run`.
 
 ## Daily use
 
-After initial setup, run the final `run` command for your operating system.
-It runs in the foreground, scans DOU and LinkedIn JobSpy regularly, and sends
-newly accepted vacancies. By default, the Worker pauses both scans and
-notifications from 22:00 to 09:00 in `Europe/Kyiv`; change
-`Worker:QuietHours:*` if needed.
-It searches vacancies posted within the past 24 hours across every enabled
-source. Change the shared period with `Search:LookbackHours`, for example
-`--Search:LookbackHours=48`.
+After setup, run the final `run` command for your OS. It continuously scans
+enabled sources and sends new matches. Defaults: vacancies from the past 24
+hours and quiet hours from 22:00–09:00 (`Europe/Kyiv`). Override them with
+`--Search:LookbackHours=48` or `Worker:QuietHours:*`.
 
 To force a single scan without starting the continuous process:
 
@@ -216,9 +164,27 @@ dotnet run --project src/JobHunter.Worker -- run-once --source dou \
   --Telegram:Enabled=true
 ```
 
-`run-once` only enqueues notifications; `run` starts the dispatcher that
-delivers them. `show-profile` validates the profile locally, but its output
-may contain personal data.
+`run-once` queues notifications; `run` also delivers them.
+
+### One-command launch scripts
+
+The launchers start JobSpy and continuous Worker mode, and create example
+profile/CV files on first run. They securely prompt for missing Telegram
+credentials and save them in .NET User Secrets.
+
+```bash
+# macOS — make executable once, then double-click it in Finder or run it here.
+chmod +x scripts/start-job-hunter.command scripts/start-job-hunter.sh
+./scripts/start-job-hunter.command
+```
+
+```powershell
+# Windows — double-click start-job-hunter.cmd in Explorer, or run it here.
+.\scripts\start-job-hunter.cmd
+```
+
+Set `JOB_HUNTER_DATA_DIR` to an absolute local directory to use a separate
+data set. Logs and process-ID files are kept there.
 
 ## JobSpy and further reading
 
